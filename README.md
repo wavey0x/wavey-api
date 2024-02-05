@@ -2,7 +2,7 @@
 
 This document outlines the usage of the Shadow Logs API, which allows users to query a dataset of pre-fetched shadow logs collected from Prisma's vault contract. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
 
-```json
+```
 {
     'account': "0xA42E8825104635253C64086b34F64057789f65eC", // Also searchable via reverse ENS
     'adjusted_amount': 171.84241873206764,
