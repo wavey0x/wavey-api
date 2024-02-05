@@ -1,6 +1,22 @@
-### API Documentation: Search Records API
+### API Documentation: Prisma Shadow API
 
-This document outlines the usage of the Search Records API, which allows users to query a dataset based on various criteria including accounts, amounts, time ranges, and more. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
+This document outlines the usage of the Shadow Logs API, which allows users to query a dataset of pre-fetched shadow logs collected from Prisma's vault contract. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
+
+```json
+{
+    'account': "0xA42E8825104635253C64086b34F64057789f65eC", // Also searchable via reverse ENS
+    'adjusted_amount': 171.84241873206764,
+    'amount': 171.84241873206764,
+    'block': 18480795,
+    'boost_delegate': "0x0000000000000000000000000000000000000000", // Also searchable via reverse ENS
+    'date_str': "11/02/2023, 00:20:35",
+    'fee': 0.0,
+    'receiver': "0xA42E8825104635253C64086b34F64057789f65eC", // Also searchable via reverse ENS
+    'system_week': 12,
+    'timestamp': 1698884435,
+    'txn_hash': "0x2df70acb3410be009cbea53434f52eddcc7183838567d639e868d0ce7b550b25"
+}
+```
 
 #### Base URL
 http://<your-server-address>:<port>/search
