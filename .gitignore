@@ -1,2 +1,7 @@
 .venv
 venv
+.vscode
+api.log
+access.log
+error.log
+gunicorn_config.py

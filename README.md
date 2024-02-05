@@ -1,6 +1,6 @@
-### API Documentation: Prisma Shadow API
+### Prisma Shadow Logs API
 
-This document outlines the usage of the Shadow Logs API, which allows users to query a dataset of pre-fetched shadow logs collected from Prisma's vault contract. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
+This document outlines the usage of the Prisma Shadow Logs API, which allows users to query a dataset of pre-fetched shadow logs from Prisma's vault contract. This API exposes data otherwise difficult to obtain from a regular Ethereum node. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
 
 ```
 {
@@ -19,8 +19,11 @@ This document outlines the usage of the Shadow Logs API, which allows users to q
 ```
 
 #### Base URL
-http://<your-server-address>:<port>/search
+`http://<your-server-address>:<port>/search`
+
 Replace <your-server-address> and <port> with the actual address and port where your Flask application is running. Typically, for local development, this would be http://127.0.0.1:5000/search.
+
+Demo available at [https://api.wavey.info/search?end_timestamp=1707100000](https://api.wavey.info/search?end_timestamp=1707100000)
 
 ### Supported Query Parameters
 
@@ -36,13 +39,7 @@ Replace `<your-server-address>` and `<port>` with the actual address and port wh
 
 - `txn_hash`: Specify a transaction hash to match specific transactions.
 
-#### Examples
-
-1. **Query by Single Account**
-   
-
-
-###Examples
+### Examples
 #### Query by Single Account
 
 ```sql
