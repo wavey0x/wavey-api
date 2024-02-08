@@ -125,7 +125,7 @@ def get_info():
 
 @app.route('/search', methods=['GET'])
 def search_records():
-    log_request(request)
+    log_request()
     try:
         force = True if request.args.get('force', '').lower() == 'true' else False
         where_clause = build_where_clause(request.args)
