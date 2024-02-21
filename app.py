@@ -179,14 +179,13 @@ def get_contract_function_output(web3, address, abi, function_name, args=[]):
     function = getattr(contract.functions, function_name)
     return function(*args).call()
 
-@app.route('/curve/gauge_check', methods=['GET'])
+@app.route('/curve/verify_gauge', methods=['GET'])
 def gauge_check():
     response = {'is_valid': False, 'message': ''}
-    address = request.args.get('address', '').lower()
-    if address == '':
+    address = request.args.get('a') or request.args.get('address')
+    if not address or address == '':
         response['message'] = 'No address parameter given.'
         return response
-    
     
     web3 = Web3(Web3.HTTPProvider(f'https://mainnet.infura.io/v3/{INFURA_API_KEY}'))
     
