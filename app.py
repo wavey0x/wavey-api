@@ -14,12 +14,13 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 app = Flask(__name__)
 
-DOT_ENV_PATH = os.getenv('DOTENV_PATH')
-
-if DOT_ENV_PATH:
-    load_dotenv(DOT_ENV_PATH)
+DOTENV_PATH = os.getenv('DOTENV_PATH')
+print('DOTENV_PATH', DOTENV_PATH)
+app.logger.info(f"{DOTENV_PATH}")
+if DOTENV_PATH:
+    load_dotenv(DOTENV_PATH)
 else:
-    load_dotenv
+    load_dotenv()
 
 INFURA_API_KEY = os.getenv('WEB3_INFURA_PROJECT_ID')
 
