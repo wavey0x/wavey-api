@@ -12,9 +12,17 @@ import warnings
 
 # Suppress DeprecationWarning
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-load_dotenv()
 app = Flask(__name__)
+
+DOT_ENV_PATH = os.getenv('DOTENV_PATH')
+
+if DOT_ENV_PATH:
+    load_dotenv(DOT_ENV_PATH)
+else:
+    load_dotenv
+
+INFURA_API_KEY = os.getenv('WEB3_INFURA_PROJECT_ID')
+
 
 SIZE_FIELDS = {'fee', 'amount', 'adjusted_amount'}
 TABLE_NAME = 'boost_data'
@@ -43,8 +51,7 @@ if __name__ != '__main__':
 def log_request():
     # No function parameter needed because Flask uses global context variables.
     full_path = request.full_path
-    ip_address = request.remote_addr
-    app.logger.info(f"{ip_address} | {full_path}")
+    app.logger.info(f"{full_path}")
 
 def fetch_and_cache_data(force):
     global df_cache
@@ -179,16 +186,16 @@ def gauge_check():
         response['message'] = 'No address parameter given.'
         return response
     
-    INFURA_API_KEY = os.getenv('INFURA_API_KEY')
+    
     web3 = Web3(Web3.HTTPProvider(f'https://mainnet.infura.io/v3/{INFURA_API_KEY}'))
-    print(INFURA_API_KEY)
+    
     print(address)
 
-    if web3.is_address(address) == False:
+    if web3.isAddress(address) == False:
         response['message'] = 'Invalid Ethereum address.'
         return response
 
-    address = web3.to_checksum_address(address)
+    address = web3.toChecksumAddress(address)
 
     if not is_valid_contract(web3, address):
         response['message'] = "Supplied address is not a valid contract."
