@@ -4,7 +4,16 @@ import requests, re
 import pandas as pd
 import time
 import logging
+from web3 import Web3
+from web3.exceptions import ContractLogicError
+from dotenv import load_dotenv
+import os
+import warnings
 
+# Suppress DeprecationWarning
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+load_dotenv()
 app = Flask(__name__)
 
 SIZE_FIELDS = {'fee', 'amount', 'adjusted_amount'}
@@ -27,9 +36,9 @@ if __name__ != '__main__':
     gunicorn_logger = logging.getLogger('gunicorn.error') # Works on all log levels
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level) # take the log level config as specified in gunicorn start up script
-else:
-    # Running in development, configure default logging
-    logging.basicConfig(filename='api.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# else:
+#     # Running in development, configure default logging
+#     logging.basicConfig(filename='api.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def log_request():
     # No function parameter needed because Flask uses global context variables.
@@ -123,7 +132,7 @@ def get_info():
     result = {'last_updated': last_updated, 'time_since': int(current_time - last_updated)}
     return jsonify(result)
 
-@app.route('/search', methods=['GET'])
+@app.route('/prisma/txns', methods=['GET'])
 def search_records():
     log_request()
     try:
@@ -141,6 +150,67 @@ def search_records():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": "Internal server error"}), 500
+
+
+GAUGE_ABI = [
+    {"constant": True, "inputs": [], "name": "factory", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+    {"constant": True, "inputs": [], "name": "lp_token", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+]
+
+FACTORY_ABI = [
+    {"constant": True, "inputs": [{"name": "pool", "type": "address"}], "name": "get_gauge", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+]
+
+TRUSTED_FACTORIES = ['0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf']
+
+def is_valid_contract(web3, address):
+    return web3.eth.get_code(address) != '0x0'
+
+def get_contract_function_output(web3, address, abi, function_name, args=[]):
+    contract = web3.eth.contract(address=address, abi=abi)
+    function = getattr(contract.functions, function_name)
+    return function(*args).call()
+
+@app.route('/curve/gauge_check', methods=['GET'])
+def gauge_check():
+    response = {'is_valid': False, 'message': ''}
+    address = request.args.get('address', '').lower()
+    if address == '':
+        response['message'] = 'No address parameter given.'
+        return response
+    
+    INFURA_API_KEY = os.getenv('INFURA_API_KEY')
+    web3 = Web3(Web3.HTTPProvider(f'https://mainnet.infura.io/v3/{INFURA_API_KEY}'))
+    print(INFURA_API_KEY)
+    print(address)
+
+    if web3.is_address(address) == False:
+        response['message'] = 'Invalid Ethereum address.'
+        return response
+
+    address = web3.to_checksum_address(address)
+
+    if not is_valid_contract(web3, address):
+        response['message'] = "Supplied address is not a valid contract."
+        return response
+
+    try:
+        factory_address = get_contract_function_output(web3, address, GAUGE_ABI, 'factory')
+        lp_token_address = get_contract_function_output(web3, address, GAUGE_ABI, 'lp_token')
+        gauge_address = get_contract_function_output(web3, factory_address, FACTORY_ABI, 'get_gauge', args=[lp_token_address])
+    except ContractLogicError as e:
+        response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+        return response
+    except Exception as e:
+        response['message'] = "Error when querying data from contracts."
+        return response
+
+    if gauge_address != address:
+        response['message'] = "Factory address for this pool does not match supplied address."
+    else:
+        response['is_valid'] = True
+        response['message'] = "This is a verified factory deployed gauge."
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)
