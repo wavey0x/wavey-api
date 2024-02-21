@@ -192,11 +192,11 @@ def gauge_check():
     
     print(address)
 
-    if web3.isAddress(address) == False:
+    if web3.is_address(address) == False:
         response['message'] = 'Invalid Ethereum address.'
         return response
 
-    address = web3.toChecksumAddress(address)
+    address = web3.to_checksum_address(address)
 
     if not is_valid_contract(web3, address):
         response['message'] = "Supplied address is not a valid contract."
