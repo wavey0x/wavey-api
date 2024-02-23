@@ -182,13 +182,15 @@ def get_contract_function_output(web3, address, abi, function_name, args=[]):
 @app.route('/tools/timestamp', methods=['GET'])
 @app.route('/tools/ts', methods=['GET'])
 def convert_timestamp():
-    response = {'is_valid': False, 'message': ''}
     unix_timestamp = request.args.get('ts') or request.args.get('timestamp')
-    try:
-        unix_timestamp = int(unix_timestamp)
-    except ValueError as e:
-        app.logger.error(f"{e}")
-        return jsonify({"error": 'Invalid input. Please pass a timestamp as integer.'}), 400
+    if unix_timestamp.lower() == 'now':
+        unix_timestamp = int(time.time())
+    else:
+        try:
+            unix_timestamp = int(unix_timestamp)
+        except ValueError as e:
+            app.logger.error(f"{e}")
+            return jsonify({"error": 'Invalid input. Please pass a timestamp as integer.'}), 400
     
     import datetime
     import pytz
