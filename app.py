@@ -167,9 +167,14 @@ GAUGE_ABI = [
 
 FACTORY_ABI = [
     {"constant": True, "inputs": [{"name": "pool", "type": "address"}], "name": "get_gauge", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+    {"constant": True, "inputs": [{"name": "gauge", "type": "address"}], "name": "is_valid_gauge", "outputs": [{"name": "", "type": "bool"}], "type": "function"},
 ]
 
-TRUSTED_FACTORIES = ['0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf']
+TRUSTED_FACTORIES = [
+    '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf', # Regular
+    '0xabC000d88f23Bb45525E447528DBF656A9D55bf5', # Bridge factory
+    '0xeF672bD94913CB6f1d2812a6e18c1fFdEd8eFf5c', # root / child gauge factory for fraxtal
+]
 
 def is_valid_contract(web3, address):
     return web3.eth.get_code(address) != '0x0'
@@ -227,8 +232,6 @@ def gauge_check():
         return response
     
     web3 = Web3(Web3.HTTPProvider(f'https://mainnet.infura.io/v3/{INFURA_API_KEY}'))
-    
-    print(address)
 
     if web3.is_address(address) == False:
         response['message'] = 'Invalid Ethereum address.'
@@ -240,16 +243,46 @@ def gauge_check():
         response['message'] = "Supplied address is not a valid contract."
         return response
 
+    # Validate factory
     try:
         factory_address = get_contract_function_output(web3, address, GAUGE_ABI, 'factory')
-        lp_token_address = get_contract_function_output(web3, address, GAUGE_ABI, 'lp_token')
-        gauge_address = get_contract_function_output(web3, factory_address, FACTORY_ABI, 'get_gauge', args=[lp_token_address])
     except ContractLogicError as e:
-        response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+        response['message'] = "Contract call reverted. Could not discover factory used to deploy this gauge."
         return response
-    except Exception as e:
-        response['message'] = "Error when querying data from contracts."
+    if factory_address not in TRUSTED_FACTORIES:
+        response['message'] = "Factory used to deploy this is not found on trusted list."
+        response['is_valid'] = False
         return response
+
+    is_lp_gauge = True
+    try:
+        lp_token_address = get_contract_function_output(web3, address, GAUGE_ABI, 'lp_token')
+    except:
+        is_lp_gauge = False
+
+    if is_lp_gauge:
+        try:
+            gauge_address = get_contract_function_output(web3, factory_address, FACTORY_ABI, 'get_gauge', args=[lp_token_address])
+        except:
+            response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+            response['is_valid'] = False
+            return response
+    else:
+        try:
+            print(factory_address)
+            is_valid_gauge = get_contract_function_output(web3, factory_address, FACTORY_ABI, 'is_valid_gauge', args=[address])
+        except:
+            response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+            response['is_valid'] = False
+            return response
+        if is_valid_gauge:
+            response['message'] = "This is a verified factory deployed gauge."
+            response['is_valid'] = True
+            return response
+        else:
+            response['message'] = "The factory reports this gauge as invalid."
+            response['is_valid'] = False
+            return response
 
     if gauge_address != address:
         response['message'] = "Factory address for this pool does not match supplied address."
