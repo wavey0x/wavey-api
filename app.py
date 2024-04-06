@@ -247,8 +247,9 @@ def gauge_check():
     # Validate factory
     try:
         factory_address = get_contract_function_output(web3, address, GAUGE_ABI, 'factory')
-    except ContractLogicError as e:
-        response['message'] = "Contract call reverted. Could not discover factory used to deploy this gauge."
+    except:
+        response['message'] = "Contract call to discover factory reverted. Ensure you provide a factory depolyed gauge."
+        response['is_valid'] = False
         return response
     if factory_address not in TRUSTED_FACTORIES:
         response['message'] = "Factory used to deploy this is not found on trusted list."
