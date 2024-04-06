@@ -174,6 +174,7 @@ TRUSTED_FACTORIES = [
     '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf', # Regular
     '0xabC000d88f23Bb45525E447528DBF656A9D55bf5', # Bridge factory
     '0xeF672bD94913CB6f1d2812a6e18c1fFdEd8eFf5c', # root / child gauge factory for fraxtal
+    '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F', # CurveTwocryptoFactory
 ]
 
 def is_valid_contract(web3, address):
