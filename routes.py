@@ -18,6 +18,7 @@ def verify_gauge_route():
     return verify_gauge.verify_gauge(request)
 
 @api.route('/tools/timestamp', methods=['GET'])
+@api.route('/tools/ts', methods=['GET'])
 def timestamp_route():
     unix_timestamp = request.args.get('ts') or request.args.get('timestamp')
     try:
