@@ -3,8 +3,7 @@ import pytz, time
 from flask import Flask, request, jsonify
 from dateutil.relativedelta import relativedelta
 
-def convert_timestamp():
-    unix_timestamp = request.args.get('ts') or request.args.get('timestamp')
+def convert_timestamp(unix_timestamp):
     if unix_timestamp.lower() == 'now':
         unix_timestamp = int(time.time())
     else:
