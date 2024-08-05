@@ -1,3 +1,10 @@
 flask
 duckdb
 pandas
+web3
+flask_sqlalchemy
+python-dotenv
+pytz
+python-dateutil
+flask_cors
+psycopg2-binary
