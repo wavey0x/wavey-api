@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 import services.verify_gauge as verify_gauge
 import services.stakes as stakes
-import services.time as convert_timestamp
+import services.time as time_module
 import services.status as status
 import services.ybs as ybs
 import services.crvlol as crvlol
@@ -20,7 +20,7 @@ def verify_gauge_route():
 @api.route('/tools/timestamp', methods=['GET'])
 def timestamp_route():
     try:
-        return convert_timestamp(request)
+        return time_module.convert_timestamp(request)
     except ValueError as e:
         current_app.logger.error(f"{e}")
         return jsonify({"error": 'Something went wrong.'}), 400
