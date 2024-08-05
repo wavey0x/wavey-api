@@ -41,7 +41,7 @@ def get_harvests():
 
 @api.route('/crvlol/info')
 def ll_info():
-    return crvlol.ll_info(request)
+    return crvlol.ll_info()
 
 @api.route('/crvlol/charts/<chart_name>/<peg>')
 def get_chart(chart_name, peg):

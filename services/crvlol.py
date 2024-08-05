@@ -44,7 +44,7 @@ def get_harvests():
     })
 
 
-def ll_info(request):
+def ll_info():
     filepath = os.getenv('HOME_DIRECTORY')
     filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
     files = glob.glob(filepath)
