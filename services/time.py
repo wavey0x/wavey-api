@@ -1,5 +1,5 @@
 import datetime
-import pytz
+import pytz, time
 from flask import Flask, request, jsonify
 from dateutil.relativedelta import relativedelta
 
@@ -11,7 +11,6 @@ def convert_timestamp():
         try:
             unix_timestamp = int(unix_timestamp)
         except ValueError as e:
-            app.logger.error(f"{e}")
             return jsonify({"error": 'Invalid input. Please pass a timestamp as integer.'}), 400
 
     # Convert Unix timestamp to UTC
