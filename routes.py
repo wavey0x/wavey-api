@@ -20,7 +20,6 @@ def verify_gauge_route():
 @api.route('/tools/timestamp', methods=['GET'])
 def timestamp_route():
     unix_timestamp = request.args.get('ts') or request.args.get('timestamp')
-    unix_timestamp = int(unix_timestamp)
     try:
         return time_module.convert_timestamp(unix_timestamp)
     except ValueError as e:
