@@ -49,10 +49,10 @@ class UserWeekInfo(db.Model):
             'account': self.account,
             'week_id': self.week_id,
             'token': self.token,
-            'user_weight': float(self.user_weight),
-            'user_balance': float(self.user_balance),
-            'user_boost': float(self.user_boost),
-            'user_stake_map': self.user_stake_map,
+            'weight': float(self.user_weight),
+            'balance': float(self.user_balance),
+            'boost': float(self.user_boost),
+            'stake_map': self.user_stake_map,
             'rewards_earned': float(self.user_rewards_earned),
             'ybs': self.ybs,
             'global_weight': float(self.global_weight),
@@ -85,7 +85,7 @@ class UserInfo(db.Model):
             'weight': float(self.weight),
             'balance': float(self.balance),
             'boost': float(self.boost),
-            'map': self.map,
+            'stake_map': self.map,
             'rewards_earned': float(self.rewards_earned),
             'ybs': self.ybs
         }
@@ -112,9 +112,16 @@ class GlobalWeekInfo(db.Model):
             'token': self.token,
             'weight': float(self.weight),
             'total_supply': float(self.total_supply),
+            'balance': float(self.total_supply),
             'boost': float(self.boost),
             'stake_map': self.stake_map,
-            'ybs': self.ybs
+            'ybs': self.ybs,
+            'start_ts': self.start_ts,
+            'start_block': self.start_block,
+            'end_ts': self.end_ts,
+            'end_block': self.end_block,
+            'start_time_str': self.start_time_str,
+            'end_time_str': self.end_time_str,
         }
 
 
