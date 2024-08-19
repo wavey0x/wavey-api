@@ -35,6 +35,10 @@ def get_status():
 def get_user_info():
     return ybs.user_info(request)
 
+@api.route('/ybs/global_info', methods=['GET'])
+def get_global_info():
+    return ybs.global_info(request)
+
 @api.route('/crvlol/harvests', methods=['GET'])
 def get_harvests():
     return crvlol.get_harvests()

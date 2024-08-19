@@ -21,7 +21,8 @@ class Stake(db.Model):
             'newweight': float(self.newweight),  # Assuming Numeric needs float conversion
             'timestamp': int(self.timestamp)
         }
-    
+
+
 class UserWeekInfo(db.Model):
     __tablename__ = 'user_week_info'
 
@@ -64,9 +65,9 @@ class UserWeekInfo(db.Model):
             'end_time_str': self.end_time_str,
         }
     
+
 class UserInfo(db.Model):
     __tablename__ = 'user_info'
-
     account = db.Column(db.String, primary_key=True)
     week_id = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.String)
@@ -88,6 +89,34 @@ class UserInfo(db.Model):
             'rewards_earned': float(self.rewards_earned),
             'ybs': self.ybs
         }
+
+
+class GlobalWeekInfo(db.Model):
+    __tablename__ = 'week_info'
+    week_id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String)
+    weight = db.Column(db.Numeric(30, 18))
+    total_supply = db.Column(db.Numeric(30, 18))
+    boost = db.Column(db.Numeric(30, 18))
+    stake_map = db.Column(db.JSON)
+    ybs = db.Column(db.String)
+    start_ts = db.Column(db.Integer)
+    end_ts = db.Column(db.Integer)
+    start_block = db.Column(db.Integer)
+    end_block = db.Column(db.Integer)
+    start_time_str = db.Column(db.String)
+    end_time_str = db.Column(db.String)
+    def to_dict(self):
+        return {
+            'week_id': self.week_id,
+            'token': self.token,
+            'weight': float(self.weight),
+            'total_supply': float(self.total_supply),
+            'boost': float(self.boost),
+            'stake_map': self.stake_map,
+            'ybs': self.ybs
+        }
+
 
 class CrvLlHarvest(db.Model):
     __tablename__ = 'crv_ll_harvests'
