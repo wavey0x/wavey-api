@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request
 from models import GaugeVoteInfo, db
+from sqlalchemy import func
+from web3 import Web3
 
 
 def get_gauge_votes(request):
@@ -16,14 +18,21 @@ def get_gauge_votes(request):
     if not gauge:
         return jsonify({"error": "gauge parameter is required"}), 400
     
-    # Query the database for records matching the gauge and order by timestamp descending
-    records = GaugeVoteInfo.query.filter_by(gauge=gauge).order_by(GaugeVoteInfo.timestamp.desc()).offset(offset).limit(per_page).all()
-    total = GaugeVoteInfo.query.filter_by(gauge=gauge).count()
+    try:
+        # Convert the input to a checksummed address
+        checksummed_gauge = Web3.to_checksum_address(gauge)
+    except ValueError:
+        # If the conversion fails, it's not a valid Ethereum address
+        return jsonify({"error": "Invalid Ethereum address provided"}), 400
+    
+    # Query the database for records matching the checksummed gauge
+    query = GaugeVoteInfo.query.filter(GaugeVoteInfo.gauge == checksummed_gauge)
+    
+    total = query.count()
+    records = query.order_by(GaugeVoteInfo.timestamp.desc()).offset(offset).limit(per_page).all()
     if not records:
         return jsonify({"message": "No records found for the provided gauge."}), 404
 
-    # Convert the records to dictionaries and return as a JSON response
-    # return jsonify([record.to_dict() for record in records])
     return jsonify({
             'page': page,
             'per_page': per_page,
