@@ -74,7 +74,7 @@ class UserInfo(db.Model):
     weight = db.Column(db.Numeric(30, 18))
     balance = db.Column(db.Numeric(30, 18))
     boost = db.Column(db.Numeric(30, 18))
-    map = db.Column(db.JSON)
+    stake_map = db.Column(db.JSON)
     rewards_earned = db.Column(db.Numeric(30, 18))
     ybs = db.Column(db.String)
     def to_dict(self):
@@ -85,7 +85,7 @@ class UserInfo(db.Model):
             'weight': float(self.weight),
             'balance': float(self.balance),
             'boost': float(self.boost),
-            'stake_map': self.map,
+            'stake_map': self.stake_map,
             'rewards_earned': float(self.rewards_earned),
             'ybs': self.ybs
         }
@@ -136,3 +136,33 @@ class CrvLlHarvest(db.Model):
     block = db.Column(db.Integer)
     txn_hash = db.Column(db.String)
     date_str = db.Column(db.String)
+
+class GaugeVoteInfo(db.Model):
+    __tablename__ = 'curve_gauge_votes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    gauge = db.Column(db.String, nullable=False)
+    gauge_name = db.Column(db.String, nullable=True)
+    account = db.Column(db.String, nullable=False)
+    amount = db.Column(db.Numeric(30, 18), nullable=False)
+    weight = db.Column(db.Integer, nullable=False)
+    txn_hash = db.Column(db.String, nullable=True)
+    timestamp = db.Column(db.Integer, nullable=False)
+    date_str = db.Column(db.String, nullable=True)
+    block = db.Column(db.Integer, nullable=False)
+    account_alias = db.Column(db.String, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'gauge': self.gauge,
+            'gauge_name': self.gauge_name,
+            'account': self.account,
+            'amount': float(self.amount),
+            'weight': self.weight,
+            'txn_hash': self.txn_hash,
+            'timestamp': self.timestamp,
+            'date_str': self.date_str,
+            'block': self.block,
+            'account_alias': self.account_alias
+        }

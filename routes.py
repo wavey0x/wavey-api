@@ -5,7 +5,7 @@ import services.time as time_module
 import services.status as status
 import services.ybs as ybs
 import services.crvlol as crvlol
-import json
+import services.gauge_voting as gauge_voting
 
 api = Blueprint('api', __name__)
 
@@ -50,3 +50,7 @@ def ll_info():
 @api.route('/crvlol/charts/<chart_name>/<peg>')
 def get_chart(chart_name, peg):
     return crvlol.get_chart(chart_name, peg)
+
+@api.route('/crvlol/gauge_votes', methods=['GET'])
+def get_gauge_votes():
+    return gauge_voting.get_gauge_votes(request)
