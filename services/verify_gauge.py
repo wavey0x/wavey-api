@@ -17,6 +17,7 @@ TRUSTED_FACTORIES = [
     '0xabC000d88f23Bb45525E447528DBF656A9D55bf5', # Bridge factory
     '0xeF672bD94913CB6f1d2812a6e18c1fFdEd8eFf5c', # root / child gauge factory for fraxtal
     '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F', # CurveTwocryptoFactory
+    '0x306A45a1478A000dC701A6e1f7a569afb8D9DCD6', # Root liquidity gauge factory
 ]
 
 def get_contract_function_output(web3, address, abi, function_name, args=[]):
