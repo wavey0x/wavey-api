@@ -6,8 +6,12 @@ import services.status as status
 import services.ybs as ybs
 import services.crvlol as crvlol
 import services.gauge_voting as gauge_voting
+from services.gauge_info import GaugeInfoService
 
 api = Blueprint('api', __name__)
+
+# Initialize the GaugeInfoService
+gauge_info_service = GaugeInfoService()
 
 @api.route('/ybs/stakes', methods=['GET'])
 def get_stakes():
@@ -16,6 +20,12 @@ def get_stakes():
 @api.route('/curve/verify_gauge', methods=['GET'])
 def verify_gauge_route():
     return verify_gauge.verify_gauge(request)
+
+@api.route('/curve/gauge_info', methods=['GET'])
+def gauge_info_route():
+    """Get detailed information about a gauge"""
+    response = gauge_info_service.get_gauge_info(request)
+    return jsonify(response)
 
 @api.route('/tools/timestamp', methods=['GET'])
 @api.route('/tools/ts', methods=['GET'])

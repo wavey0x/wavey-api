@@ -1,6 +1,4 @@
-from web3 import Web3
-import config
-from .web3_services import setup_web3
+from .web3_services import setup_web3, get_contract
 
 GAUGE_ABI = [
     {"constant": True, "inputs": [], "name": "factory", "outputs": [{"name": "", "type": "address"}], "type": "function"},
@@ -13,20 +11,21 @@ FACTORY_ABI = [
 ]
 
 TRUSTED_FACTORIES = [
-    '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf', # Regular
-    '0xabC000d88f23Bb45525E447528DBF656A9D55bf5', # Bridge factory
-    '0xeF672bD94913CB6f1d2812a6e18c1fFdEd8eFf5c', # root / child gauge factory for fraxtal
-    '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F', # CurveTwocryptoFactory
-    '0x306A45a1478A000dC701A6e1f7a569afb8D9DCD6', # Root liquidity gauge factory
+    '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',  # Regular
+    '0xabC000d88f23Bb45525E447528DBF656A9D55bf5',  # Bridge factory
+    '0xeF672bD94913CB6f1d2812a6e18c1fFdEd8eFf5c',  # root / child gauge factory for fraxtal
+    '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F',  # CurveTwocryptoFactory
+    '0x306A45a1478A000dC701A6e1f7a569afb8D9DCD6',  # Root liquidity gauge factory
 ]
 
 def get_contract_function_output(web3, address, abi, function_name, args=[]):
-    contract = web3.eth.contract(address=address, abi=abi)
+    contract = get_contract(web3, address, abi)
     function = getattr(contract.functions, function_name)
     return function(*args).call()
 
 def verify_gauge(request):
     response = {'is_valid': False, 'message': ''}
+
     address = request.args.get('a') or request.args.get('address')
     if not address or address == '':
         response['message'] = 'No address parameter given.'
@@ -92,6 +91,28 @@ def verify_gauge(request):
         response['is_valid'] = True
         response['message'] = "This is a verified factory deployed gauge."
     return response
+
+def verify_gauge_by_address(address):
+    """
+    Verify a gauge by directly providing its address
+    
+    Args:
+        address: The gauge address to verify
+        
+    Returns:
+        Dictionary with verification result
+    """
+    class DummyRequest:
+        def __init__(self, address):
+            class Args:
+                def get(self, param_name):
+                    if param_name in ['a', 'address']:
+                        return address
+                    return None
+            self.args = Args()
+    
+    dummy_request = DummyRequest(address)
+    return verify_gauge(dummy_request)
 
 def is_valid_contract(web3, address):
     return web3.eth.get_code(address) != '0x0'
