@@ -1,6 +1,7 @@
 """
 Constants used throughout the project
 """
+import os
 
 # Provider wallet addresses
 PROVIDER_WALLETS = {
@@ -13,5 +14,5 @@ PROVIDER_WALLETS = {
 MAX_BOOST = 2.5
 PER_MAX_BOOST = 1.0 / MAX_BOOST
 
-# Default web3 provider
-DEFAULT_WEB3_PROVIDER = "https://guest:guest@eth.wavey.info" 
+# Default web3 provider from environment variable
+DEFAULT_WEB3_PROVIDER = os.environ.get("MAINNET_RPC", "http://localhost:8545") 
