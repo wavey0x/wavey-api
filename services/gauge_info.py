@@ -138,6 +138,10 @@ class GaugeInfoService:
         pool_data = gauge_info["pool_data"]
         pool_name = gauge_info["pool_name"]
         
+        # Extract APY information - provides min and max boost APY values
+        gauge_crv_apy = pool_data.get("gaugeCrvApy", [None, None])
+        gauge_future_crv_apy = pool_data.get("gaugeFutureCrvApy", [None, None])
+        
         # Prepare response
         response["success"] = True
         response["message"] = "Gauge information retrieved successfully"
@@ -151,6 +155,19 @@ class GaugeInfoService:
             "gauge_data": {
                 "inflation_rate": pool_data.get("gauge_data", {}).get("inflation_rate"),
                 "working_supply": pool_data.get("gauge_data", {}).get("working_supply")
+            },
+            # Add APY information with clear labeling
+            "apy_data": {
+                "gauge_crv_apy": {
+                    "min_boost": gauge_crv_apy[0],
+                    "max_boost": gauge_crv_apy[1],
+                    "raw_values": gauge_crv_apy
+                },
+                "gauge_future_crv_apy": {
+                    "min_boost": gauge_future_crv_apy[0],
+                    "max_boost": gauge_future_crv_apy[1],
+                    "raw_values": gauge_future_crv_apy
+                }
             },
             "gauge_controller": pool_data.get("gauge_controller", {}),
             "gauge_relative_weight": pool_data.get("gauge_controller", {}).get("gauge_relative_weight"),

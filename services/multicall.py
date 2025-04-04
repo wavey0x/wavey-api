@@ -27,6 +27,7 @@ def batch_calls(web3: Web3, calls: List[Tuple[str, str, List]], abi: List[Dict] 
     # Prepare calls for multicall
     multicall_calls = []
     contracts = {}
+    function_abis = {}
     
     # If no ABI provided, import Gauge ABI
     if abi is None:
@@ -41,6 +42,10 @@ def batch_calls(web3: Web3, calls: List[Tuple[str, str, List]], abi: List[Dict] 
                 address=web3.to_checksum_address(contract_address),
                 abi=abi
             )
+            
+        # Cache function ABI for later decoding
+        if function_name not in function_abis:
+            function_abis[function_name] = next((item for item in abi if item.get("name") == function_name), None)
             
         # Encode function call
         function = getattr(contracts[contract_address].functions, function_name)
@@ -58,43 +63,37 @@ def batch_calls(web3: Web3, calls: List[Tuple[str, str, List]], abi: List[Dict] 
         print(f"Error calling multicall: {e}")
         raise
     
-    # Decode results
+    # Decode results - simplified approach that works with most Web3.py versions
     decoded_results = []
     for i, (contract_address, function_name, _) in enumerate(calls):
-        contract = contracts[contract_address]
+        function_abi = function_abis[function_name]
         
-        # Use the contract's decoder which is more reliable across versions
-        try:
-            # Get the function selector for the result we're trying to decode
-            func_obj = getattr(contract.functions, function_name)
-            
-            # Different Web3.py versions support different decoding methods
-            if hasattr(contract, 'decode_function_result'):
-                # Web3.py >= 5.0
-                decoded = contract.decode_function_result(function_name, result[i])
-            else:
-                # Web3.py < 5.0
-                decoded = func_obj.call_decoder(result[i])
-            
-            # Output can be a single value or tuple, normalize to just return the value for single outputs
-            if isinstance(decoded, tuple) and len(decoded) == 1:
-                decoded_results.append(decoded[0])
-            else:
-                decoded_results.append(decoded)
-                
-        except Exception as e:
-            print(f"Error decoding result for {function_name}: {e}")
-            # Manual decoding as last resort for basic uint256 returns
+        # For simple uint256 returns (which covers most gauge functions), manually decode
+        if len(function_abi['outputs']) == 1 and function_abi['outputs'][0]['type'] == 'uint256':
             try:
-                # Most gauge functions return uint256 which we can decode manually
-                # This handles basic uint256 returns without needing eth_abi
-                if len(result[i]) >= 32:  # uint256 is 32 bytes
-                    int_value = int.from_bytes(result[i], byteorder='big')
-                    decoded_results.append(int_value)
+                # Decode uint256 value
+                value = int.from_bytes(result[i], byteorder='big')
+                decoded_results.append(value)
+            except Exception as e:
+                print(f"Error decoding result for {function_name}: {e}")
+                decoded_results.append(None)
+        else:
+            # For more complex types, try using the Web3.py built-in decoder
+            try:
+                contract = contracts[contract_address]
+                if hasattr(contract, 'decode_function_result'):
+                    # Web3.py >= 5.0
+                    decoded = contract.decode_function_result(function_name, result[i])
+                    if isinstance(decoded, tuple) and len(decoded) == 1:
+                        decoded_results.append(decoded[0])
+                    else:
+                        decoded_results.append(decoded)
                 else:
+                    # Fallback for older versions - this isn't perfect but better than nothing
+                    print(f"Warning: Your Web3.py version may not support automatic decoding")
                     decoded_results.append(None)
-            except Exception as manual_error:
-                print(f"Manual decoding also failed: {manual_error}")
+            except Exception as e:
+                print(f"Error decoding complex result for {function_name}: {e}")
                 decoded_results.append(None)
     
     return decoded_results 
