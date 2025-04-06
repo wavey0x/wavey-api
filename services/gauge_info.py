@@ -142,6 +142,14 @@ class GaugeInfoService:
         gauge_crv_apy = pool_data.get("gaugeCrvApy", [None, None])
         gauge_future_crv_apy = pool_data.get("gaugeFutureCrvApy", [None, None])
         
+        # Extract pool URLs for user actions - only take the first URL from each array
+        pool_urls_raw = pool_data.get("poolUrls", {})
+        pool_urls = {
+            "swap": pool_urls_raw.get("swap", [])[0] if pool_urls_raw.get("swap") else None,
+            "deposit": pool_urls_raw.get("deposit", [])[0] if pool_urls_raw.get("deposit") else None,
+            "withdraw": pool_urls_raw.get("withdraw", [])[0] if pool_urls_raw.get("withdraw") else None
+        }
+        
         # Prepare response
         response["success"] = True
         response["message"] = "Gauge information retrieved successfully"
@@ -169,6 +177,8 @@ class GaugeInfoService:
                     "raw_values": gauge_future_crv_apy
                 }
             },
+            # Add pool URLs for direct links to Curve UI - only first URL
+            "pool_urls": pool_urls,
             "gauge_controller": pool_data.get("gauge_controller", {}),
             "gauge_relative_weight": pool_data.get("gauge_controller", {}).get("gauge_relative_weight"),
             "is_killed": pool_data.get("is_killed", False),
