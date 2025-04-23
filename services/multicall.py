@@ -120,15 +120,43 @@ def _execute_multicall_batch(web3, multicall_contract, calls, abi):
     decoded_results = []
     for i, (contract_address, function_name, _) in enumerate(calls):
         function_abi = function_abis[function_name]
+        output_type = function_abi['outputs'][0]['type'] if len(function_abi['outputs']) > 0 else None
         
+        if not result[i] or result[i] == "0x":
+            # Handle empty result
+            logger.warning(f"Empty result for {function_name} on {contract_address}")
+            decoded_results.append(None)
+            continue
+            
         # For simple uint256 returns (which covers most gauge functions), manually decode
-        if len(function_abi['outputs']) == 1 and function_abi['outputs'][0]['type'] == 'uint256':
+        if output_type == 'uint256':
             try:
                 # Decode uint256 value
                 value = int.from_bytes(result[i], byteorder='big')
                 decoded_results.append(value)
             except Exception as e:
-                logger.error(f"Error decoding result for {function_name}: {e}")
+                logger.error(f"Error decoding uint256 result for {function_name}: {e}")
+                decoded_results.append(None)
+        # For address returns
+        elif output_type == 'address':
+            try:
+                # Address is the last 20 bytes of the result
+                # Pad with zeroes if result is too short
+                padded_result = result[i].ljust(40, b'\0')
+                address_bytes = padded_result[-20:]
+                address_hex = "0x" + address_bytes.hex()
+                decoded_results.append(web3.to_checksum_address(address_hex))
+            except Exception as e:
+                logger.error(f"Error decoding address result for {function_name}: {e}")
+                decoded_results.append(None)
+        # For boolean returns
+        elif output_type == 'bool':
+            try:
+                # Boolean is 1 or 0 at the last byte
+                value = int.from_bytes(result[i], byteorder='big')
+                decoded_results.append(bool(value))
+            except Exception as e:
+                logger.error(f"Error decoding boolean result for {function_name}: {e}")
                 decoded_results.append(None)
         else:
             # For more complex types, try using the Web3.py built-in decoder
@@ -137,6 +165,7 @@ def _execute_multicall_batch(web3, multicall_contract, calls, abi):
                 if hasattr(contract, 'decode_function_result'):
                     # Web3.py >= 5.0
                     decoded = contract.decode_function_result(function_name, result[i])
+                    logger.debug(f"Decoded result type: {type(decoded)} value: {decoded}")
                     if isinstance(decoded, tuple) and len(decoded) == 1:
                         decoded_results.append(decoded[0])
                     else:

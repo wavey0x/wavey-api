@@ -40,6 +40,7 @@ def verify_gauge(request):
         return response
 
     address = web3.to_checksum_address(address)
+    logger.info(f"Starting verification for gauge address: {address}")
 
     # Check if contract exists
     if not is_valid_contract(web3, address):
@@ -48,67 +49,68 @@ def verify_gauge(request):
         logger.info(f"Gauge verification failed (not a contract) in {elapsed:.3f}s")
         return response
 
-    # Use multicall to batch the initial contract calls
+    # Direct function call for factory - critical part that must work
     try:
-        # Create a list of calls to be executed in a single multicall
-        calls = [
-            (address, "factory", []),     # Get the factory address
-            (address, "lp_token", [])     # Get the LP token address (might fail for non-LP gauges)
-        ]
+        # Use get_contract to make a direct call for the factory address
+        contract = get_contract(web3, address, GAUGE_ABI)
+        factory_address = contract.functions.factory().call()
+        logger.info(f"Factory address: {factory_address}")
         
-        # Execute multicall
-        multicall_start = time.time()
-        results = batch_calls(web3, calls, GAUGE_ABI)
-        multicall_time = time.time() - multicall_start
-        logger.debug(f"Initial multicall completed in {multicall_time:.3f}s")
-        
-        # Extract results
-        factory_address = results[0]
-        lp_token_address = results[1]  # This might be None for non-LP gauges
-        
-        # Check if factory is trusted
         if factory_address not in TRUSTED_FACTORIES:
             response['message'] = "Factory used to deploy this is not found on trusted list."
             elapsed = time.time() - start_time
-            logger.info(f"Gauge verification failed (untrusted factory) in {elapsed:.3f}s")
+            logger.info(f"Gauge verification failed (untrusted factory: {factory_address}) in {elapsed:.3f}s")
             return response
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"Error getting factory address: {e}")
+        response['message'] = "Contract call to discover factory reverted. Ensure you provide a factory deployed gauge."
+        return response
+
+    # Try to determine if this is an LP gauge
+    is_lp_gauge = True
+    try:
+        # Direct call for lp_token
+        contract = get_contract(web3, address, GAUGE_ABI)
+        lp_token_address = contract.functions.lp_token().call()
+        logger.info(f"LP token address: {lp_token_address}")
+    except Exception as e:
+        logger.info(f"Not an LP gauge (lp_token call failed): {e}")
+        is_lp_gauge = False
+        lp_token_address = None
+
+    logger.info(f"Is LP gauge: {is_lp_gauge}")
+    
+    # Handle LP gauges vs non-LP gauges
+    if is_lp_gauge:
+        try:
+            # Direct call for get_gauge
+            factory_contract = get_contract(web3, factory_address, FACTORY_ABI)
+            gauge_address = factory_contract.functions.get_gauge(lp_token_address).call()
+            logger.info(f"Factory's gauge address for LP token: {gauge_address}")
             
-        # Determine if this is an LP gauge based on lp_token call success
-        is_lp_gauge = lp_token_address is not None
-        
-        # Second multicall based on whether it's an LP gauge
-        if is_lp_gauge:
-            # For LP gauges, we need to call get_gauge on the factory
-            calls = [
-                (factory_address, "get_gauge", [lp_token_address])
-            ]
-            multicall_start = time.time()
-            results = batch_calls(web3, calls, FACTORY_ABI)
-            multicall_time = time.time() - multicall_start
-            logger.debug(f"LP gauge validation multicall completed in {multicall_time:.3f}s")
-            
-            gauge_address = results[0]
-            
-            if gauge_address != address:
-                response['message'] = "Factory address for this pool does not match supplied address."
+            # Case-insensitive address comparison
+            if gauge_address.lower() != address.lower():
+                response['message'] = f"Factory address for this pool does not match supplied address. Expected {gauge_address}, got {address}"
                 elapsed = time.time() - start_time
                 logger.info(f"Gauge verification failed (address mismatch) in {elapsed:.3f}s")
-            else:
-                response['is_valid'] = True
-                response['message'] = "This is a verified factory deployed LP gauge."
-                elapsed = time.time() - start_time
-                logger.info(f"Gauge verification succeeded (LP gauge) in {elapsed:.3f}s")
-        else:
-            # For non-LP gauges, we need to call is_valid_gauge on the factory
-            calls = [
-                (factory_address, "is_valid_gauge", [address])
-            ]
-            multicall_start = time.time()
-            results = batch_calls(web3, calls, FACTORY_ABI)
-            multicall_time = time.time() - multicall_start
-            logger.debug(f"Non-LP gauge validation multicall completed in {multicall_time:.3f}s")
+                return response
             
-            is_valid_gauge = results[0]
+            response['is_valid'] = True
+            response['message'] = "This is a verified factory deployed LP gauge."
+            elapsed = time.time() - start_time
+            logger.info(f"Gauge verification succeeded (LP gauge) in {elapsed:.3f}s")
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Error validating LP gauge: {e}")
+            response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+            return response
+    else:
+        try:
+            # Direct call for is_valid_gauge
+            factory_contract = get_contract(web3, factory_address, FACTORY_ABI)
+            is_valid_gauge = factory_contract.functions.is_valid_gauge(address).call()
+            logger.info(f"Factory reports is_valid_gauge: {is_valid_gauge}")
             
             if is_valid_gauge:
                 response['is_valid'] = True
@@ -119,19 +121,18 @@ def verify_gauge(request):
                 response['message'] = "The factory reports this gauge as invalid."
                 elapsed = time.time() - start_time
                 logger.info(f"Gauge verification failed (factory reports invalid) in {elapsed:.3f}s")
-        
-        # Add timing information to response
-        response["timing"] = {
-            "total_seconds": time.time() - start_time
-        }
-        
-        return response
-        
-    except Exception as e:
-        elapsed = time.time() - start_time
-        logger.error(f"Error in gauge verification after {elapsed:.3f}s: {e}")
-        response['message'] = f"Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
-        return response
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Error checking is_valid_gauge: {e}")
+            response['message'] = "Contract call reverted. This likely means that the supplied address is not a valid gauge from the latest factory."
+            return response
+
+    # Add timing information to response
+    response["timing"] = {
+        "total_seconds": time.time() - start_time
+    }
+    
+    return response
 
 def verify_gauge_by_address(address):
     """
