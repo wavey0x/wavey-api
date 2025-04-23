@@ -6,3 +6,4 @@ api.log
 access.log
 error.log
 gunicorn_config.py
+app.log

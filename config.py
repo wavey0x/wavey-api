@@ -7,3 +7,4 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     WEB3_INFURA_PROJECT_ID = os.getenv('WEB3_INFURA_PROJECT_ID')
     INFURA_API_KEY = os.getenv('WEB3_INFURA_PROJECT_ID')
+    ADMIN_API_KEY = os.environ.get('ADMIN_API_KEY', 'changeme')

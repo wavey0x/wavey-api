@@ -11,5 +11,7 @@ GAUGE_ABI = [
     {"name": "factory", "inputs": [], "outputs": [{"type": "address", "name": ""}], 
      "stateMutability": "view", "type": "function"},
     {"name": "lp_token", "inputs": [], "outputs": [{"type": "address", "name": ""}], 
+     "stateMutability": "view", "type": "function"},
+    {"name": "totalSupply", "inputs": [], "outputs": [{"type": "uint256", "name": ""}],
      "stateMutability": "view", "type": "function"}
 ] 

@@ -51,16 +51,16 @@ class BoostService:
             print(f"Error calculating boost for address {wallet_address}: {e}")
             return None
             
-    def get_boosts_batch(self, wallet_addresses: List[str], gauge_address: str) -> Dict[str, Optional[float]]:
+    def get_boosts_batch(self, wallet_addresses: List[str], gauge_address: str) -> Dict[str, Dict[str, Any]]:
         """
-        Calculate boost values for multiple wallets in a single batch request.
+        Calculate boost values and ownership percentages for multiple wallets in a single batch request.
         
         Args:
             wallet_addresses: List of wallet addresses to calculate boosts for
             gauge_address: The gauge contract address
             
         Returns:
-            Dictionary mapping wallet addresses to their boost values
+            Dictionary mapping wallet addresses to their boost values and supply percentages
         """
         try:
             # Make sure gauge address is checksum
@@ -69,6 +69,9 @@ class BoostService:
             # Prepare batch calls
             calls = []
             normalized_addresses = []
+            
+            # First, add totalSupply call (only once)
+            calls.append((gauge_address, "totalSupply", []))
             
             for wallet in wallet_addresses:
                 wallet = self.web3.to_checksum_address(wallet)
@@ -82,29 +85,47 @@ class BoostService:
             # Execute batch call
             results = batch_calls(self.web3, calls)
             
-            # Process results
+            # First result is totalSupply
+            total_supply = results[0]
+            
+            # Process results (starting from index 1 because index 0 is totalSupply)
             boosts = {}
             for i in range(0, len(normalized_addresses)):
                 wallet = normalized_addresses[i]
-                working_balance = results[i*2]  # Even indices have working_balances
-                gauge_balance = results[i*2+1]  # Odd indices have balanceOf
+                working_balance_idx = 1 + (i * 2)  # Offset for totalSupply + even indices
+                gauge_balance_idx = 2 + (i * 2)    # Offset for totalSupply + odd indices
+                
+                working_balance = results[working_balance_idx]
+                gauge_balance = results[gauge_balance_idx]
                 
                 # Safety check for None values
-                if working_balance is None or gauge_balance is None:
-                    boosts[wallet] = None
+                if working_balance is None or gauge_balance is None or total_supply is None or total_supply == 0:
+                    boosts[wallet] = {
+                        "boost": None,
+                        "pct_of_total_supply": 0
+                    }
                     continue
                     
+                # Calculate percentage of total supply
+                pct_of_total_supply = (gauge_balance / total_supply) * 100
+                
                 if gauge_balance == 0:
-                    boosts[wallet] = 1.0
+                    boost = 1.0
                 else:
                     boost = working_balance / (PER_MAX_BOOST * gauge_balance)
-                    boosts[wallet] = min(max(boost, 1.0), MAX_BOOST)
+                    boost = min(max(boost, 1.0), MAX_BOOST)
                     
+                boosts[wallet] = {
+                    "boost": boost,
+                    "gauge_balance": gauge_balance,
+                    "pct_of_total_supply": pct_of_total_supply
+                }
+                
             return boosts
             
         except Exception as e:
             print(f"Error calculating batch boosts: {e}")
-            return {wallet: None for wallet in wallet_addresses}
+            return {wallet: {"boost": None, "pct_of_total_supply": 0} for wallet in wallet_addresses}
 
 
 # Example usage
@@ -131,8 +152,10 @@ if __name__ == "__main__":
     batch_results = boost_service.get_boosts_batch(wallet_addresses, gauge_address)
     
     for provider, wallet in PROVIDER_WALLETS.items():
-        boost = batch_results.get(wallet)
-        if boost is not None:
-            print(f"{provider.capitalize()} ({wallet}) has a boost of {boost:.4f}")
+        boost_data = batch_results.get(wallet)
+        if boost_data is not None:
+            boost = boost_data["boost"]
+            pct_of_total_supply = boost_data["pct_of_total_supply"]
+            print(f"{provider.capitalize()} ({wallet}) has a boost of {boost:.4f} ({(pct_of_total_supply):.2f}% of total supply)")
         else:
             print(f"Failed to calculate boost for {provider}")

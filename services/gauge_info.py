@@ -2,18 +2,31 @@
 API service to get information about a specific Curve gauge
 """
 import requests
+import time
+import logging
 from typing import Dict, Any, Optional, List
 import json
+from datetime import datetime, timedelta
 from .verify_gauge import verify_gauge_by_address
 from .constants import PROVIDER_WALLETS, MAX_BOOST, PER_MAX_BOOST
 from .web3_services import setup_web3, get_contract
 from .boost import BoostService
 from .abis.gauge_abi import GAUGE_ABI
+from collections import defaultdict
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+# Create a session for connection pooling
+http_session = requests.Session()
+
+# Cache expiration time in seconds
+CACHE_EXPIRATION_SECONDS = 100
 
 class GaugeInfoService:
     def __init__(self, curve_api_url: str = "https://api.curve.fi/api/getAllGauges"):
         """
-        Initialize the GaugeInfoService
+        Initialize the GaugeInfoService with caching capabilities
         
         Args:
             curve_api_url: URL of the Curve API to fetch gauge data
@@ -21,26 +34,127 @@ class GaugeInfoService:
         self.curve_api_url = curve_api_url
         self.web3 = setup_web3()
         self.boost_service = BoostService()
+        
+        # Initialize cache
         self._gauge_data_cache = None
-        self._last_update = 0
+        self._cache_timestamp = 0
+        self._cache_hits = 0
+        self._cache_misses = 0
+    
+    def _is_cache_valid(self) -> bool:
+        """
+        Check if the cache is still valid
+        
+        Returns:
+            True if cache is valid, False otherwise
+        """
+        current_time = time.time()
+        cache_age = current_time - self._cache_timestamp
+        
+        return (self._gauge_data_cache is not None and 
+                cache_age < CACHE_EXPIRATION_SECONDS)
     
     def _fetch_all_gauges(self) -> Dict[str, Any]:
         """
-        Fetch data about all gauges from the Curve API
+        Fetch data about all gauges from the Curve API with caching
         
         Returns:
             Dictionary containing all gauge data
         """
+        # Check if cache is valid
+        if self._is_cache_valid():
+            self._cache_hits += 1
+            cache_age = time.time() - self._cache_timestamp
+            logger.info(f"Using cached gauge data (age: {cache_age:.1f}s, hits: {self._cache_hits}, misses: {self._cache_misses})")
+            return self._gauge_data_cache
+        
+        # Cache is invalid, need to fetch fresh data
+        self._cache_misses += 1
+        start_time = time.time()
         try:
-            response = requests.get(self.curve_api_url)
+            logger.info(f"Fetching fresh gauge data from Curve API (cache expired or not initialized)")
+            response = http_session.get(self.curve_api_url, timeout=10)  # Use session for connection pooling
             response.raise_for_status()
             data = response.json()
+            
             if data.get("success"):
-                return data.get("data", {})
+                # Update cache
+                self._gauge_data_cache = data.get("data", {})
+                self._cache_timestamp = time.time()
+                
+                elapsed = time.time() - start_time
+                gauge_count = len(self._gauge_data_cache)
+                logger.info(f"Updated cache with {gauge_count} gauges in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
+                return self._gauge_data_cache
+            
+            logger.warning(f"Curve API returned success=false in {time.time() - start_time:.3f}s")
+            # Use stale cache if available
+            if self._gauge_data_cache is not None:
+                logger.warning(f"Using stale cache due to API error (success=false)")
+                return self._gauge_data_cache
+            return {}
+        except requests.exceptions.Timeout:
+            elapsed = time.time() - start_time
+            logger.error(f"Timeout fetching gauge data after {elapsed:.3f}s")
+            if self._gauge_data_cache is not None:
+                logger.warning(f"Using stale cache due to API timeout")
+                return self._gauge_data_cache
             return {}
         except Exception as e:
-            print(f"Error fetching gauge data: {e}")
+            elapsed = time.time() - start_time
+            logger.error(f"Error fetching gauge data in {elapsed:.3f}s: {e}")
+            
+            # Return cached data even if expired in case of API error
+            if self._gauge_data_cache is not None:
+                logger.warning(f"Using stale cache due to API error: {type(e).__name__}")
+                return self._gauge_data_cache
+            
             return {}
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the cache
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        current_time = time.time()
+        cache_age = current_time - self._cache_timestamp
+        next_refresh = max(0, CACHE_EXPIRATION_SECONDS - cache_age)
+        
+        return {
+            "has_cached_data": self._gauge_data_cache is not None,
+            "cache_hits": self._cache_hits,
+            "cache_misses": self._cache_misses,
+            "cache_age_seconds": cache_age if self._gauge_data_cache is not None else None,
+            "next_refresh_seconds": next_refresh if self._gauge_data_cache is not None else 0,
+            "timestamp": datetime.fromtimestamp(self._cache_timestamp).isoformat() if self._cache_timestamp > 0 else None,
+            "next_refresh_time": datetime.fromtimestamp(self._cache_timestamp + CACHE_EXPIRATION_SECONDS).isoformat() if self._cache_timestamp > 0 else None,
+            "gauge_count": len(self._gauge_data_cache) if self._gauge_data_cache is not None else 0
+        }
+    
+    def force_refresh_cache(self) -> Dict[str, Any]:
+        """
+        Force refresh the gauge data cache
+        
+        Returns:
+            Dictionary with refresh status and statistics
+        """
+        # Reset cache
+        self._gauge_data_cache = None
+        self._cache_timestamp = 0
+        
+        # Fetch new data
+        start_time = time.time()
+        gauge_data = self._fetch_all_gauges()
+        elapsed = time.time() - start_time
+        
+        return {
+            "success": len(gauge_data) > 0,
+            "elapsed_seconds": elapsed,
+            "gauge_count": len(gauge_data),
+            "cache_stats": self.get_cache_stats()
+        }
     
     def _find_gauge_by_address(self, gauge_address: str) -> Optional[Dict[str, Any]]:
         """
@@ -52,6 +166,7 @@ class GaugeInfoService:
         Returns:
             Dictionary with gauge information or None if not found
         """
+        start_time = time.time()
         all_gauges = self._fetch_all_gauges()
         
         # Normalize the gauge address for comparison
@@ -62,40 +177,55 @@ class GaugeInfoService:
             if "gauge" in pool_data:
                 pool_gauge_address = pool_data["gauge"].lower()
                 if pool_gauge_address == gauge_address:
+                    elapsed = time.time() - start_time
+                    logger.info(f"Found gauge {gauge_address} for pool {pool_name} in {elapsed:.3f}s")
                     return {
                         "pool_name": pool_name,
                         "pool_data": pool_data
                     }
         
+        elapsed = time.time() - start_time
+        logger.warning(f"Gauge {gauge_address} not found in {elapsed:.3f}s")
         return None
     
     def get_provider_boosts(self, gauge_address: str) -> Dict[str, Any]:
         """
-        Get boost values for all providers for a specific gauge using batch requests
+        Get boost values and supply percentages for all providers for a specific gauge
         
         Args:
             gauge_address: The gauge address to calculate boosts for
             
         Returns:
-            Dictionary containing boost values for each provider
+            Dictionary containing boost values and supply percentages for each provider
         """
+        start_time = time.time()
         provider_boosts = {}
         
         # Get all wallet addresses
         wallet_addresses = list(PROVIDER_WALLETS.values())
         
         # Use the batch function to get all boosts at once
+        logger.info(f"Fetching boosts for {len(wallet_addresses)} providers for gauge {gauge_address}")
         batch_results = self.boost_service.get_boosts_batch(wallet_addresses, gauge_address)
         
         # Format the results
         for provider_name, wallet_address in PROVIDER_WALLETS.items():
-            boost = batch_results.get(wallet_address)
+            provider_data = batch_results.get(wallet_address, {})
+            boost = provider_data.get("boost")
+            pct_of_total = provider_data.get("pct_of_total_supply", 0)
+            gauge_balance = provider_data.get("gauge_balance", 0)
+            
             provider_boosts[provider_name] = {
                 "wallet": wallet_address,
                 "boost": boost,
-                "boost_formatted": f"{boost:.4f}" if boost is not None else "N/A"
+                "boost_formatted": f"{boost:.4f}" if boost is not None else "N/A",
+                "pct_of_total_supply": pct_of_total,
+                "pct_formatted": f"{pct_of_total:.2f}%" if pct_of_total is not None else "0.00%",
+                "gauge_balance": gauge_balance
             }
         
+        elapsed = time.time() - start_time
+        logger.info(f"Calculated boosts for {len(wallet_addresses)} providers in {elapsed:.3f}s")
         return provider_boosts
     
     def get_gauge_info(self, request) -> Dict[str, Any]:
@@ -108,6 +238,9 @@ class GaugeInfoService:
         Returns:
             Dictionary with gauge information and verification status
         """
+        request_start_time = time.time()
+        logger.info(f"Starting gauge info request with params: {request.args}")
+        
         response = {
             "success": False,
             "message": "",
@@ -118,21 +251,33 @@ class GaugeInfoService:
         gauge_address = request.args.get('gauge')
         if not gauge_address:
             response["message"] = "Missing 'gauge' parameter"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Missing gauge parameter. Took {elapsed:.3f}s")
             return response
         
         # Get verification status
+        verification_start = time.time()
         verification = verify_gauge_by_address(gauge_address)
+        verification_time = time.time() - verification_start
+        logger.info(f"Gauge verification took {verification_time:.3f}s. Is valid: {verification['is_valid']}")
         
         # Find gauge information
+        find_gauge_start = time.time()
         gauge_info = self._find_gauge_by_address(gauge_address)
+        find_gauge_time = time.time() - find_gauge_start
         
         if not gauge_info:
             response["message"] = "Gauge not found in Curve API"
             response["verification"] = verification
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Gauge {gauge_address} not found in Curve API. Took {elapsed:.3f}s")
             return response
         
         # Get provider boosts
+        boost_start = time.time()
         provider_boosts = self.get_provider_boosts(gauge_address)
+        boost_time = time.time() - boost_start
+        logger.info(f"Provider boost calculation took {boost_time:.3f}s")
         
         # Extract relevant information
         pool_data = gauge_info["pool_data"]
@@ -189,6 +334,16 @@ class GaugeInfoService:
         }
         response["verification"] = verification
         
+        # Add timing information
+        total_elapsed = time.time() - request_start_time
+        response["timing"] = {
+            "total_seconds": total_elapsed,
+            "verification_seconds": verification_time,
+            "find_gauge_seconds": find_gauge_time,
+            "boost_calculation_seconds": boost_time
+        }
+        
+        logger.info(f"Gauge info request completed in {total_elapsed:.3f}s for gauge {gauge_address}")
         return response
 
 
