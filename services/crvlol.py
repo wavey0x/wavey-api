@@ -3,6 +3,9 @@ import pandas as pd
 from models import CrvLlHarvest
 import json, os, glob
 from dotenv import load_dotenv
+from web3 import Web3
+from .web3_services import setup_web3, get_contract
+from .abis.validator_abi import VALIDATOR_ABI
 
 load_dotenv()
 
@@ -69,3 +72,46 @@ def get_chart(chart_name, peg):
         return "File not found", 404
     latest_file = max(files, key=os.path.getctime)
     return send_from_directory(os.path.dirname(latest_file), os.path.basename(latest_file))
+
+def get_curve_gov_proposals():
+    """
+    Fetch active proposals from the Curve governance contract.
+    
+    Returns:
+        JSON response containing proposal information
+    """
+    try:
+        # Initialize web3
+        web3 = setup_web3()
+        
+        # Governance contract address
+        validator_address = "0x60272833edd3f340f6436a8aaa83290c61524c44"
+        
+        # Get contract instance
+        validator_contract = get_contract(web3, validator_address, VALIDATOR_ABI)
+        
+        # Call getActiveProposalDetails
+        proposals = validator_contract.functions.getActiveProposalDetails().call()
+        
+        # Format the response
+        formatted_proposals = []
+        for proposal in proposals:
+            formatted_proposals.append({
+                "id": proposal[0],  # id
+                "gauges": [web3.to_checksum_address(gauge) for gauge in proposal[1]],  # gauges
+                "executed": proposal[2],  # executed
+                "startDate": proposal[3],  # startDate
+                "isValid": proposal[4]  # isValid
+            })
+        
+        return jsonify({
+            "status": "success",
+            "data": formatted_proposals
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+    

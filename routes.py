@@ -64,3 +64,7 @@ def get_chart(chart_name, peg):
 @api.route('/crvlol/gauge_votes', methods=['GET'])
 def get_gauge_votes():
     return gauge_voting.get_gauge_votes(request)
+
+@api.route('/crvlol/gov_proposals', methods=['GET'])
+def get_curve_gov_proposals():
+    return crvlol.get_curve_gov_proposals()
