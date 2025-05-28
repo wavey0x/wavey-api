@@ -24,7 +24,7 @@ http_session = requests.Session()
 CACHE_EXPIRATION_SECONDS = 100
 
 class GaugeInfoService:
-    def __init__(self, curve_api_url: str = "https://api.curve.fi/api/getAllGauges"):
+    def __init__(self, curve_api_url: str = "https://api.curve.finance/api/getAllGauges"):
         """
         Initialize the GaugeInfoService with caching capabilities
         
