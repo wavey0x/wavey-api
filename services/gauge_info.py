@@ -76,11 +76,11 @@ class GaugeInfoService:
                 logger.warning("HOME_DIRECTORY environment variable not set")
                 return None
                 
-            filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
             logger.info(f"Full file path: {filepath}")
             
             if not os.path.exists(filepath):
-                logger.warning(f"Local curve gauge data file not found: {filepath}")
+                logger.warning(f"Local ll_info file not found: {filepath}")
                 # Check if the directory exists
                 dir_path = os.path.dirname(filepath)
                 if os.path.exists(dir_path):
@@ -106,14 +106,18 @@ class GaugeInfoService:
                 data = json.load(file)
                 logger.info(f"JSON parsed successfully, data type: {type(data)}")
                 
-            # Handle different data structures
+            # Handle the correct data structure where gauge data is under 'curve_gauge_data' key
             if isinstance(data, dict):
-                # If data has the same structure as external API
-                if "success" in data and "data" in data:
+                if "curve_gauge_data" in data:
+                    gauge_data = data["curve_gauge_data"]
+                    logger.info(f"Successfully loaded local curve gauge data with {len(gauge_data)} gauges from 'curve_gauge_data' key")
+                    return gauge_data
+                # Fallback: If data has the same structure as external API
+                elif "success" in data and "data" in data:
                     actual_data = data.get("data", {})
                     logger.info(f"Successfully loaded local curve gauge data with {len(actual_data)} gauges (API format)")
                     return actual_data
-                # If data is directly the gauge data
+                # Fallback: If data is directly the gauge data
                 else:
                     logger.info(f"Successfully loaded local curve gauge data with {len(data)} gauges (direct format)")
                     return data
@@ -231,7 +235,7 @@ class GaugeInfoService:
             try:
                 filepath = os.getenv('HOME_DIRECTORY')
                 if filepath:
-                    local_file_path = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+                    local_file_path = f'{filepath}/curve-ll-charts/data/ll_info.json'
                     if os.path.exists(local_file_path):
                         data_source = "local_file"
                     else:
@@ -386,7 +390,7 @@ class GaugeInfoService:
                     "filepath": None
                 }
                 
-            filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
             
             if not os.path.exists(filepath):
                 return {
@@ -474,7 +478,7 @@ class GaugeInfoService:
                 }
             
             # Test 2: File path construction
-            file_path = f'{home_dir}/curve-ll-charts/data/curve_gauge_data.json'
+            file_path = f'{home_dir}/curve-ll-charts/data/ll_info.json'
             logger.info(f"Test 2 - File path: {file_path}")
             
             # Test 3: File existence
@@ -529,9 +533,37 @@ class GaugeInfoService:
                 logger.info(f"Data type: {type(data)}")
                 if isinstance(data, dict):
                     logger.info(f"Data keys: {list(data.keys()) if len(data) <= 10 else list(data.keys())[:10] + ['...']}")
+                    
+                    # Check for the expected 'curve_gauge_data' key
+                    if "curve_gauge_data" in data:
+                        gauge_data = data["curve_gauge_data"]
+                        logger.info(f"Found 'curve_gauge_data' key with {len(gauge_data)} gauges")
+                        if isinstance(gauge_data, dict) and len(gauge_data) > 0:
+                            sample_gauge_keys = list(gauge_data.keys())[:3]
+                            logger.info(f"Sample gauge keys: {sample_gauge_keys}")
+                    else:
+                        logger.warning("'curve_gauge_data' key not found in data")
+                        
             except Exception as e:
                 logger.error(f"Error parsing JSON: {e}")
                 json_parse_success = False
+            
+            # Determine data structure and gauge count
+            data_structure = "unknown"
+            gauge_count = 0
+            
+            if data and isinstance(data, dict):
+                if "curve_gauge_data" in data:
+                    gauge_data = data["curve_gauge_data"]
+                    data_structure = "curve_gauge_data key format"
+                    gauge_count = len(gauge_data) if isinstance(gauge_data, dict) else 0
+                elif "success" in data and "data" in data:
+                    actual_data = data.get("data", {})
+                    data_structure = "API format"
+                    gauge_count = len(actual_data) if isinstance(actual_data, dict) else 0
+                else:
+                    data_structure = "direct format"
+                    gauge_count = len(data)
             
             # Return comprehensive test results
             return {
@@ -540,8 +572,8 @@ class GaugeInfoService:
                 "file_size_bytes": file_size,
                 "file_size_mb": round(file_size / (1024 * 1024), 2) if file_size else None,
                 "data_type": type(data).__name__ if data else None,
-                "data_structure": "API format" if data and isinstance(data, dict) and "success" in data and "data" in data else "direct format" if data and isinstance(data, dict) else "unknown",
-                "gauge_count": len(data) if data and isinstance(data, dict) else 0,
+                "data_structure": data_structure,
+                "gauge_count": gauge_count,
                 "tests": {
                     "env_var": True,
                     "file_path": file_path,

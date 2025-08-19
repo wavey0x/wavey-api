@@ -82,19 +82,27 @@ def get_curve_gauge_data():
     """
     try:
         filepath = os.getenv('HOME_DIRECTORY')
-        filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+        filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
         
         if not os.path.exists(filepath):
-            return jsonify({"error": "Curve gauge data file not found"}), 404
+            return jsonify({"error": "ll_info file not found"}), 404
             
         with open(filepath) as file:
             data = json.load(file)
             
-        return jsonify({
-            "status": "success",
-            "data": data
-        })
-        
+        # Extract the curve_gauge_data key from ll_info.json
+        if "curve_gauge_data" in data:
+            gauge_data = data["curve_gauge_data"]
+            return jsonify({
+                "status": "success",
+                "data": gauge_data
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "curve_gauge_data key not found in ll_info.json"
+            }), 500
+            
     except Exception as e:
         return jsonify({
             "status": "error",
