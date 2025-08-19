@@ -1090,44 +1090,30 @@ class GaugeInfoService:
             for gauge_name, gauge_data in gauges_by_name.items():
                 # Check if query is contained in the gauge name (case insensitive)
                 if query_lower in gauge_name.lower():
-                    # Handle different data structures - gauge_data might be a string (address) or dict
-                    if isinstance(gauge_data, str):
-                        # If gauge_data is just a string, it's likely the address
+                    # Handle the data structure - gauge_data is always a dict with gauge and inflation_rate
+                    if isinstance(gauge_data, dict):
+                        # Extract fields from the structure
+                        inflation_rate_str = gauge_data.get("inflation_rate", "0")
+                        
+                        # Convert string inflation rate to integer for proper sorting
+                        try:
+                            inflation_rate = int(inflation_rate_str)
+                        except (ValueError, TypeError):
+                            inflation_rate = 0
+                        
                         result = {
                             "name": gauge_name,
-                            "address": gauge_data,
-                            "inflation_rate": 0,  # Default value if not available
-                            "pool_address": None,
-                            "lp_token": None,
-                            "blockchain": "ethereum"
+                            "address": gauge_data.get("gauge"),  # Get from "gauge" field
+                            "inflation_rate": inflation_rate  # Use converted integer value
                         }
-                    elif isinstance(gauge_data, dict):
-                        # If gauge_data is a dictionary, extract fields
-                        result = {
-                            "name": gauge_name,
-                            "address": gauge_data.get("gauge"),  # Updated to use "gauge" field
-                            "inflation_rate": gauge_data.get("inflation_rate", 0),
-                            "pool_address": gauge_data.get("pool_address"),
-                            "lp_token": gauge_data.get("lp_token"),
-                            "blockchain": gauge_data.get("blockchain", "ethereum")
-                        }
+                        search_results.append(result)
                     else:
                         # Skip unexpected data types
                         logger.warning(f"Unexpected data type for gauge '{gauge_name}': {type(gauge_data)}")
                         continue
-                    
-                    search_results.append(result)
             
             # Sort results by inflation_rate (descending - highest first)
-            # Convert string inflation rates to numbers for proper sorting
-            for result in search_results:
-                if isinstance(result.get("inflation_rate"), str):
-                    try:
-                        # Convert string inflation rate to float for sorting
-                        result["inflation_rate"] = float(result["inflation_rate"])
-                    except (ValueError, TypeError):
-                        result["inflation_rate"] = 0
-            
+            # Inflation rates are now already integers, so sorting will work correctly
             search_results.sort(key=lambda x: x.get("inflation_rate", 0), reverse=True)
             
             # Limit results to prevent overwhelming response
