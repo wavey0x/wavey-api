@@ -13,6 +13,7 @@ from .web3_services import setup_web3, get_contract
 from .boost import BoostService
 from .abis.gauge_abi import GAUGE_ABI
 from collections import defaultdict
+import os
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class GaugeInfoService:
         Initialize the GaugeInfoService with caching capabilities
         
         Args:
-            curve_api_url: URL of the Curve API to fetch gauge data
+            curve_api_url: URL of the Curve API to fetch gauge data (fallback)
         """
         self.curve_api_url = curve_api_url
         self.web3 = setup_web3()
@@ -54,9 +55,38 @@ class GaugeInfoService:
         return (self._gauge_data_cache is not None and 
                 cache_age < CACHE_EXPIRATION_SECONDS)
     
+    def _get_local_curve_data(self) -> Optional[Dict[str, Any]]:
+        """
+        Get curve gauge data from local file to reduce latency
+        
+        Returns:
+            Dictionary containing curve gauge data or None if file not found
+        """
+        try:
+            filepath = os.getenv('HOME_DIRECTORY')
+            if not filepath:
+                logger.warning("HOME_DIRECTORY environment variable not set")
+                return None
+                
+            filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+            
+            if not os.path.exists(filepath):
+                logger.warning(f"Local curve gauge data file not found: {filepath}")
+                return None
+                
+            with open(filepath) as file:
+                data = json.load(file)
+                
+            logger.info(f"Successfully loaded local curve gauge data with {len(data)} gauges")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error loading local curve gauge data: {e}")
+            return None
+    
     def _fetch_all_gauges(self) -> Dict[str, Any]:
         """
-        Fetch data about all gauges from the Curve API with caching
+        Fetch data about all gauges from local file first, fallback to Curve API
         
         Returns:
             Dictionary containing all gauge data
@@ -68,9 +98,24 @@ class GaugeInfoService:
             logger.info(f"Using cached gauge data (age: {cache_age:.1f}s, hits: {self._cache_hits}, misses: {self._cache_misses})")
             return self._gauge_data_cache
         
-        # Cache is invalid, need to fetch fresh data
+        # Cache is invalid, try local file first
         self._cache_misses += 1
         start_time = time.time()
+        
+        # Try to get data from local file first
+        local_data = self._get_local_curve_data()
+        if local_data:
+            # Update cache with local data
+            self._gauge_data_cache = local_data
+            self._cache_timestamp = time.time()
+            
+            elapsed = time.time() - start_time
+            gauge_count = len(self._gauge_data_cache)
+            logger.info(f"Updated cache with {gauge_count} gauges from local file in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
+            return self._gauge_data_cache
+        
+        # Fallback to external API if local file not available
+        logger.warning("Local curve gauge data not available, falling back to external API")
         try:
             logger.info(f"Fetching fresh gauge data from Curve API (cache expired or not initialized)")
             response = http_session.get(self.curve_api_url, timeout=10)  # Use session for connection pooling
@@ -84,7 +129,7 @@ class GaugeInfoService:
                 
                 elapsed = time.time() - start_time
                 gauge_count = len(self._gauge_data_cache)
-                logger.info(f"Updated cache with {gauge_count} gauges in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
+                logger.info(f"Updated cache with {gauge_count} gauges from external API in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
                 return self._gauge_data_cache
             
             logger.warning(f"Curve API returned success=false in {time.time() - start_time:.3f}s")
@@ -122,12 +167,28 @@ class GaugeInfoService:
         cache_age = current_time - self._cache_timestamp
         next_refresh = max(0, CACHE_EXPIRATION_SECONDS - cache_age)
         
+        # Determine data source
+        data_source = "none"
+        if self._gauge_data_cache is not None:
+            # Check if we have a local file path to determine source
+            try:
+                filepath = os.getenv('HOME_DIRECTORY')
+                if filepath:
+                    local_file_path = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+                    if os.path.exists(local_file_path):
+                        data_source = "local_file"
+                    else:
+                        data_source = "external_api"
+            except:
+                data_source = "unknown"
+        
         return {
             "has_cached_data": self._gauge_data_cache is not None,
+            "data_source": data_source,
             "cache_hits": self._cache_hits,
             "cache_misses": self._cache_misses,
-            "cache_age_seconds": cache_age if self._gauge_data_cache is not None else None,
-            "next_refresh_seconds": next_refresh if self._gauge_data_cache is not None else 0,
+            "cache_age_seconds": cache_age if self._cache_timestamp > 0 else None,
+            "next_refresh_seconds": next_refresh if self._cache_timestamp > 0 else 0,
             "timestamp": datetime.fromtimestamp(self._cache_timestamp).isoformat() if self._cache_timestamp > 0 else None,
             "next_refresh_time": datetime.fromtimestamp(self._cache_timestamp + CACHE_EXPIRATION_SECONDS).isoformat() if self._cache_timestamp > 0 else None,
             "gauge_count": len(self._gauge_data_cache) if self._gauge_data_cache is not None else 0
@@ -135,7 +196,7 @@ class GaugeInfoService:
     
     def force_refresh_cache(self) -> Dict[str, Any]:
         """
-        Force refresh the gauge data cache
+        Force refresh the gauge data cache from local file first, then external API
         
         Returns:
             Dictionary with refresh status and statistics
@@ -144,21 +205,80 @@ class GaugeInfoService:
         self._gauge_data_cache = None
         self._cache_timestamp = 0
         
-        # Fetch new data
+        # Try local file first
         start_time = time.time()
+        local_data = self._get_local_curve_data()
+        
+        if local_data:
+            # Update cache with local data
+            self._gauge_data_cache = local_data
+            self._cache_timestamp = time.time()
+            elapsed = time.time() - start_time
+            
+            return {
+                "success": True,
+                "source": "local_file",
+                "elapsed_seconds": elapsed,
+                "gauge_count": len(local_data),
+                "cache_stats": self.get_cache_stats()
+            }
+        
+        # Fallback to external API if local file not available
+        logger.warning("Local curve gauge data not available, falling back to external API")
         gauge_data = self._fetch_all_gauges()
         elapsed = time.time() - start_time
         
         return {
             "success": len(gauge_data) > 0,
+            "source": "external_api",
             "elapsed_seconds": elapsed,
             "gauge_count": len(gauge_data),
             "cache_stats": self.get_cache_stats()
         }
     
+    def force_refresh_from_local(self) -> Dict[str, Any]:
+        """
+        Force refresh the gauge data cache specifically from local file
+        
+        Returns:
+            Dictionary with refresh status and statistics
+        """
+        start_time = time.time()
+        
+        # Reset cache
+        self._gauge_data_cache = None
+        self._cache_timestamp = 0
+        
+        # Get data from local file
+        local_data = self._get_local_curve_data()
+        
+        if local_data:
+            # Update cache with local data
+            self._gauge_data_cache = local_data
+            self._cache_timestamp = time.time()
+            elapsed = time.time() - start_time
+            
+            return {
+                "success": True,
+                "source": "local_file",
+                "elapsed_seconds": elapsed,
+                "gauge_count": len(local_data),
+                "cache_stats": self.get_cache_stats()
+            }
+        else:
+            elapsed = time.time() - start_time
+            return {
+                "success": False,
+                "source": "local_file",
+                "elapsed_seconds": elapsed,
+                "gauge_count": 0,
+                "error": "Local curve gauge data file not found or could not be loaded",
+                "cache_stats": self.get_cache_stats()
+            }
+    
     def _find_gauge_by_address(self, gauge_address: str) -> Optional[Dict[str, Any]]:
         """
-        Find gauge information by gauge address
+        Find gauge information by gauge address using direct dictionary lookup
         
         Args:
             gauge_address: The gauge address to look for
@@ -172,17 +292,15 @@ class GaugeInfoService:
         # Normalize the gauge address for comparison
         gauge_address = gauge_address.lower()
         
-        # Look through all pools for matching gauge address
-        for pool_name, pool_data in all_gauges.items():
-            if "gauge" in pool_data:
-                pool_gauge_address = pool_data["gauge"].lower()
-                if pool_gauge_address == gauge_address:
-                    elapsed = time.time() - start_time
-                    logger.info(f"Found gauge {gauge_address} for pool {pool_name} in {elapsed:.3f}s")
-                    return {
-                        "pool_name": pool_name,
-                        "pool_data": pool_data
-                    }
+        # Direct dictionary lookup since gauge address is now the key
+        if gauge_address in all_gauges:
+            pool_data = all_gauges[gauge_address]
+            elapsed = time.time() - start_time
+            logger.info(f"Found gauge {gauge_address} in {elapsed:.3f}s using direct lookup")
+            return {
+                "pool_name": pool_data.get("pool_name", gauge_address),  # Use pool_name if available, otherwise gauge address
+                "pool_data": pool_data
+            }
         
         elapsed = time.time() - start_time
         logger.warning(f"Gauge {gauge_address} not found in {elapsed:.3f}s")

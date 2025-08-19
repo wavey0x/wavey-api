@@ -10,6 +10,8 @@ from services.gauge_info import GaugeInfoService
 from routes import api
 import time
 
+CACHE_EXPIRATION_SECONDS = 100
+
 # Configure logging with rotation
 logging.basicConfig(
     level=logging.INFO,

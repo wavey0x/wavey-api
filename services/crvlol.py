@@ -73,6 +73,34 @@ def get_chart(chart_name, peg):
     latest_file = max(files, key=os.path.getctime)
     return send_from_directory(os.path.dirname(latest_file), os.path.basename(latest_file))
 
+def get_curve_gauge_data():
+    """
+    Get curve gauge data from local file to reduce latency.
+    
+    Returns:
+        JSON response containing curve gauge data
+    """
+    try:
+        filepath = os.getenv('HOME_DIRECTORY')
+        filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+        
+        if not os.path.exists(filepath):
+            return jsonify({"error": "Curve gauge data file not found"}), 404
+            
+        with open(filepath) as file:
+            data = json.load(file)
+            
+        return jsonify({
+            "status": "success",
+            "data": data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 def get_curve_gov_proposals():
     """
     Fetch active proposals from the Curve governance contract.
