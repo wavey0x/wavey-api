@@ -65,6 +65,42 @@ def get_gauge_info():
     logger.info(f"/api/gauge route completed in {elapsed:.3f}s")
     return jsonify(response)
 
+# New fast endpoint - basic gauge info only (~100-300ms)
+@app.route('/api/gauge/basic', methods=['GET'])
+def get_basic_gauge_info():
+    start_time = time.time()
+    response = gauge_service.get_basic_gauge_info(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/api/gauge/basic route completed in {elapsed:.3f}s")
+    return jsonify(response)
+
+# New endpoint - gauge verification only (~1-2s)
+@app.route('/api/gauge/verification', methods=['GET'])
+def get_gauge_verification():
+    start_time = time.time()
+    response = gauge_service.get_gauge_verification(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/api/gauge/verification route completed in {elapsed:.3f}s")
+    return jsonify(response)
+
+# New endpoint - gauge boosts only (~0.5-1s)
+@app.route('/api/gauge/boosts', methods=['GET'])
+def get_gauge_boosts():
+    start_time = time.time()
+    response = gauge_service.get_gauge_boosts(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/api/gauge/boosts route completed in {elapsed:.3f}s")
+    return jsonify(response)
+
+# New endpoint - complete gauge info (~2-3s)
+@app.route('/api/gauge/complete', methods=['GET'])
+def get_complete_gauge_info():
+    start_time = time.time()
+    response = gauge_service.get_complete_gauge_info(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/api/gauge/complete route completed in {elapsed:.3f}s")
+    return jsonify(response)
+
 # Also add it under the curve namespace for consistency
 @app.route('/api/curve/gauge', methods=['GET'])
 def get_curve_gauge_info():
