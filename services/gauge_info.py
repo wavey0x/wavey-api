@@ -1099,7 +1099,7 @@ class GaugeInfoService:
                         # Inflation rate is now already an integer, no conversion needed
                         result = {
                             "name": gauge_name,
-                            "gauge_address": gauge_data.get("gauge"),  # Get from "gauge" field
+                            "gauge_address": gauge_data.get("gauge_address"),  # Get from "gauge" field
                             "inflation_rate": inflation_rate  # Already an integer
                         }
                         search_results.append(result)
