@@ -989,7 +989,8 @@ class GaugeInfoService:
             "has_no_crv": pool_data.get("hasNoCrv", False),
             "pool_type": pool_data.get("type"),
             "factory": pool_data.get("factory", False),
-            "provider_boosts": provider_boosts
+            "provider_boosts": provider_boosts,
+            "curve_key": pool_data.get("curve_key", None)
         }
         response["verification"] = verification
         
