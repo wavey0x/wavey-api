@@ -1045,9 +1045,9 @@ class GaugeInfoService:
             logger.warning(f"Request failed: Missing query parameter. Took {elapsed:.3f}s")
             return response
         
-        # Require minimum 4 characters
-        if len(query) < 4:
-            response["message"] = "Query must be at least 4 characters long"
+        # Require minimum 3 characters
+        if len(query) < 3:
+            response["message"] = "Query must be at least 3 characters long"
             elapsed = time.time() - request_start_time
             logger.warning(f"Request failed: Query too short ({len(query)} chars). Took {elapsed:.3f}s")
             return response
@@ -1074,6 +1074,15 @@ class GaugeInfoService:
                 response["message"] = "No gauge data available"
                 return response
             
+            # Debug: Log the structure of the first few items
+            logger.debug(f"curve_gauges_by_name type: {type(gauges_by_name)}")
+            if isinstance(gauges_by_name, dict) and len(gauges_by_name) > 0:
+                sample_keys = list(gauges_by_name.keys())[:3]
+                logger.debug(f"Sample keys: {sample_keys}")
+                for key in sample_keys:
+                    sample_value = gauges_by_name[key]
+                    logger.debug(f"Sample value for '{key}': {type(sample_value)} - {sample_value}")
+            
             # Perform fuzzy search (case insensitive)
             query_lower = query.lower()
             search_results = []
@@ -1081,18 +1090,44 @@ class GaugeInfoService:
             for gauge_name, gauge_data in gauges_by_name.items():
                 # Check if query is contained in the gauge name (case insensitive)
                 if query_lower in gauge_name.lower():
-                    # Extract required fields
-                    result = {
-                        "name": gauge_name,
-                        "address": gauge_data.get("address"),
-                        "inflation_rate": gauge_data.get("inflation_rate", 0),
-                        "pool_address": gauge_data.get("pool_address"),
-                        "lp_token": gauge_data.get("lp_token"),
-                        "blockchain": gauge_data.get("blockchain", "ethereum")
-                    }
+                    # Handle different data structures - gauge_data might be a string (address) or dict
+                    if isinstance(gauge_data, str):
+                        # If gauge_data is just a string, it's likely the address
+                        result = {
+                            "name": gauge_name,
+                            "address": gauge_data,
+                            "inflation_rate": 0,  # Default value if not available
+                            "pool_address": None,
+                            "lp_token": None,
+                            "blockchain": "ethereum"
+                        }
+                    elif isinstance(gauge_data, dict):
+                        # If gauge_data is a dictionary, extract fields
+                        result = {
+                            "name": gauge_name,
+                            "address": gauge_data.get("gauge"),  # Updated to use "gauge" field
+                            "inflation_rate": gauge_data.get("inflation_rate", 0),
+                            "pool_address": gauge_data.get("pool_address"),
+                            "lp_token": gauge_data.get("lp_token"),
+                            "blockchain": gauge_data.get("blockchain", "ethereum")
+                        }
+                    else:
+                        # Skip unexpected data types
+                        logger.warning(f"Unexpected data type for gauge '{gauge_name}': {type(gauge_data)}")
+                        continue
+                    
                     search_results.append(result)
             
             # Sort results by inflation_rate (descending - highest first)
+            # Convert string inflation rates to numbers for proper sorting
+            for result in search_results:
+                if isinstance(result.get("inflation_rate"), str):
+                    try:
+                        # Convert string inflation rate to float for sorting
+                        result["inflation_rate"] = float(result["inflation_rate"])
+                    except (ValueError, TypeError):
+                        result["inflation_rate"] = 0
+            
             search_results.sort(key=lambda x: x.get("inflation_rate", 0), reverse=True)
             
             # Limit results to prevent overwhelming response
