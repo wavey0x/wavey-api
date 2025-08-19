@@ -101,6 +101,15 @@ def get_complete_gauge_info():
     logger.info(f"/api/gauge/complete route completed in {elapsed:.3f}s")
     return jsonify(response)
 
+# New endpoint - gauge search by name (fuzzy search)
+@app.route('/api/gauge/search', methods=['GET'])
+def search_gauges():
+    start_time = time.time()
+    response = gauge_service.search_gauges_by_name(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/api/gauge/search route completed in {elapsed:.3f}s")
+    return jsonify(response)
+
 # Also add it under the curve namespace for consistency
 @app.route('/api/curve/gauge', methods=['GET'])
 def get_curve_gauge_info():

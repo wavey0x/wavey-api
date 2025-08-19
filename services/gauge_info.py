@@ -1017,6 +1017,115 @@ class GaugeInfoService:
             Dictionary with complete gauge information
         """
         return self.get_complete_gauge_info(request)
+    
+    def search_gauges_by_name(self, request) -> Dict[str, Any]:
+        """
+        Search gauges by name using fuzzy search (case insensitive)
+        
+        Args:
+            request: HTTP request object containing the 'q' (query) parameter
+            
+        Returns:
+            Dictionary with search results sorted by inflation rate
+        """
+        request_start_time = time.time()
+        logger.info(f"Starting gauge search request with params: {request.args}")
+        
+        response = {
+            "success": False,
+            "message": "",
+            "data": None
+        }
+        
+        # Get search query from request
+        query = request.args.get('q', '').strip()
+        if not query:
+            response["message"] = "Missing 'q' (query) parameter"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Missing query parameter. Took {elapsed:.3f}s")
+            return response
+        
+        # Require minimum 4 characters
+        if len(query) < 4:
+            response["message"] = "Query must be at least 4 characters long"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Query too short ({len(query)} chars). Took {elapsed:.3f}s")
+            return response
+        
+        try:
+            # Load the curve_gauges_by_name data from local file
+            filepath = os.getenv('HOME_DIRECTORY')
+            if not filepath:
+                response["message"] = "HOME_DIRECTORY environment variable not set"
+                return response
+                
+            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
+            
+            if not os.path.exists(filepath):
+                response["message"] = "Local ll_info file not found"
+                return response
+            
+            with open(filepath) as file:
+                data = json.load(file)
+            
+            # Get the curve_gauges_by_name data
+            gauges_by_name = data.get("curve_gauges_by_name", {})
+            if not gauges_by_name:
+                response["message"] = "No gauge data available"
+                return response
+            
+            # Perform fuzzy search (case insensitive)
+            query_lower = query.lower()
+            search_results = []
+            
+            for gauge_name, gauge_data in gauges_by_name.items():
+                # Check if query is contained in the gauge name (case insensitive)
+                if query_lower in gauge_name.lower():
+                    # Extract required fields
+                    result = {
+                        "name": gauge_name,
+                        "address": gauge_data.get("address"),
+                        "inflation_rate": gauge_data.get("inflation_rate", 0),
+                        "pool_address": gauge_data.get("pool_address"),
+                        "lp_token": gauge_data.get("lp_token"),
+                        "blockchain": gauge_data.get("blockchain", "ethereum")
+                    }
+                    search_results.append(result)
+            
+            # Sort results by inflation_rate (descending - highest first)
+            search_results.sort(key=lambda x: x.get("inflation_rate", 0), reverse=True)
+            
+            # Limit results to prevent overwhelming response
+            max_results = 50
+            if len(search_results) > max_results:
+                search_results = search_results[:max_results]
+                response["message"] = f"Found {len(search_results)} results (showing top {max_results} by inflation rate)"
+            else:
+                response["message"] = f"Found {len(search_results)} results"
+            
+            response["success"] = True
+            response["data"] = {
+                "query": query,
+                "total_results": len(search_results),
+                "results": search_results
+            }
+            
+            # Add timing information
+            total_elapsed = time.time() - request_start_time
+            response["timing"] = {
+                "total_seconds": total_elapsed
+            }
+            
+            logger.info(f"Gauge search completed in {total_elapsed:.3f}s for query '{query}' - found {len(search_results)} results")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in gauge search: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            
+            response["message"] = f"Error performing search: {str(e)}"
+            return response
 
 
 # Example of how to use in a Flask or similar framework
