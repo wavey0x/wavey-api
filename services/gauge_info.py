@@ -690,18 +690,215 @@ class GaugeInfoService:
         logger.info(f"Calculated boosts for {len(wallet_addresses)} providers in {elapsed:.3f}s")
         return provider_boosts
     
-    def get_gauge_info(self, request) -> Dict[str, Any]:
+    def get_basic_gauge_info(self, request) -> Dict[str, Any]:
         """
-        Get information about a specific gauge
+        Get basic gauge information from local data only (fastest)
         
         Args:
             request: HTTP request object containing the gauge parameter
             
         Returns:
-            Dictionary with gauge information and verification status
+            Dictionary with basic gauge information
         """
         request_start_time = time.time()
-        logger.info(f"Starting gauge info request with params: {request.args}")
+        logger.info(f"Starting basic gauge info request with params: {request.args}")
+        
+        response = {
+            "success": False,
+            "message": "",
+            "data": None
+        }
+        
+        # Get gauge address from request
+        gauge_address = request.args.get('gauge')
+        if not gauge_address:
+            response["message"] = "Missing 'gauge' parameter"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Missing gauge parameter. Took {elapsed:.3f}s")
+            return response
+        
+        # Find gauge information from local data only
+        find_gauge_start = time.time()
+        gauge_info = self._find_gauge_by_address(gauge_address)
+        find_gauge_time = time.time() - find_gauge_start
+        
+        if not gauge_info:
+            response["message"] = "Gauge not found in local data"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Gauge {gauge_address} not found in local data. Took {elapsed:.3f}s")
+            return response
+        
+        # Extract relevant information
+        pool_data = gauge_info["pool_data"]
+        pool_name = gauge_info["pool_name"]
+        
+        # Extract APY information
+        gauge_crv_apy = pool_data.get("gaugeCrvApy", [None, None])
+        gauge_future_crv_apy = pool_data.get("gaugeFutureCrvApy", [None, None])
+        
+        # Extract pool URLs
+        pool_urls_raw = pool_data.get("poolUrls", {})
+        pool_urls = {
+            "swap": pool_urls_raw.get("swap", [])[0] if pool_urls_raw.get("swap") else None,
+            "deposit": pool_urls_raw.get("deposit", [])[0] if pool_urls_raw.get("deposit") else None,
+            "withdraw": pool_urls_raw.get("withdraw", [])[0] if pool_urls_raw.get("withdraw") else None
+        }
+        
+        # Prepare response with basic data only
+        response["success"] = True
+        response["message"] = "Basic gauge information retrieved successfully"
+        response["data"] = {
+            "pool_name": pool_name,
+            "gauge_address": gauge_address,
+            "pool_address": pool_data.get("poolAddress") or pool_data.get("swap"),
+            "lp_token": pool_data.get("swap_token"),
+            "blockchain": pool_data.get("blockchainId", "ethereum"),
+            "side_chain": pool_data.get("side_chain", False),
+            "gauge_data": {
+                "inflation_rate": pool_data.get("gauge_data", {}).get("inflation_rate"),
+                "working_supply": pool_data.get("gauge_data", {}).get("working_supply")
+            },
+            "apy_data": {
+                "gauge_crv_apy": {
+                    "min_boost": gauge_crv_apy[0],
+                    "max_boost": gauge_crv_apy[1],
+                    "raw_values": gauge_crv_apy
+                },
+                "gauge_future_crv_apy": {
+                    "min_boost": gauge_future_crv_apy[0],
+                    "max_boost": gauge_future_crv_apy[1],
+                    "raw_values": gauge_future_crv_apy
+                }
+            },
+            "pool_urls": pool_urls,
+            "gauge_controller": pool_data.get("gauge_controller", {}),
+            "gauge_relative_weight": pool_data.get("gauge_controller", {}).get("gauge_relative_weight"),
+            "is_killed": pool_data.get("is_killed", False),
+            "has_no_crv": pool_data.get("hasNoCrv", False),
+            "pool_type": pool_data.get("type"),
+            "factory": pool_data.get("factory", False)
+        }
+        
+        # Add timing information
+        total_elapsed = time.time() - request_start_time
+        response["timing"] = {
+            "total_seconds": total_elapsed,
+            "find_gauge_seconds": find_gauge_time
+        }
+        
+        logger.info(f"Basic gauge info request completed in {total_elapsed:.3f}s for gauge {gauge_address}")
+        return response
+    
+    def get_gauge_verification(self, request) -> Dict[str, Any]:
+        """
+        Get gauge verification status (blockchain calls required)
+        
+        Args:
+            request: HTTP request object containing the gauge parameter
+            
+        Returns:
+            Dictionary with gauge verification status
+        """
+        request_start_time = time.time()
+        logger.info(f"Starting gauge verification request with params: {request.args}")
+        
+        response = {
+            "success": False,
+            "message": "",
+            "data": None
+        }
+        
+        # Get gauge address from request
+        gauge_address = request.args.get('gauge')
+        if not gauge_address:
+            response["message"] = "Missing 'gauge' parameter"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Missing gauge parameter. Took {elapsed:.3f}s")
+            return response
+        
+        # Get verification status
+        verification_start = time.time()
+        verification = verify_gauge_by_address(gauge_address)
+        verification_time = time.time() - verification_start
+        
+        response["success"] = True
+        response["message"] = "Gauge verification completed"
+        response["data"] = {
+            "gauge_address": gauge_address,
+            "verification": verification
+        }
+        
+        # Add timing information
+        total_elapsed = time.time() - request_start_time
+        response["timing"] = {
+            "total_seconds": total_elapsed,
+            "verification_seconds": verification_time
+        }
+        
+        logger.info(f"Gauge verification completed in {total_elapsed:.3f}s for gauge {gauge_address}")
+        return response
+    
+    def get_gauge_boosts(self, request) -> Dict[str, Any]:
+        """
+        Get provider boost calculations for a gauge (blockchain calls required)
+        
+        Args:
+            request: HTTP request object containing the gauge parameter
+            
+        Returns:
+            Dictionary with provider boost information
+        """
+        request_start_time = time.time()
+        logger.info(f"Starting gauge boost calculation request with params: {request.args}")
+        
+        response = {
+            "success": False,
+            "message": "",
+            "data": None
+        }
+        
+        # Get gauge address from request
+        gauge_address = request.args.get('gauge')
+        if not gauge_address:
+            response["message"] = "Missing 'gauge' parameter"
+            elapsed = time.time() - request_start_time
+            logger.warning(f"Request failed: Missing gauge parameter. Took {elapsed:.3f}s")
+            return response
+        
+        # Get provider boosts
+        boost_start = time.time()
+        provider_boosts = self.get_provider_boosts(gauge_address)
+        boost_time = time.time() - boost_start
+        
+        response["success"] = True
+        response["message"] = "Provider boost calculations completed"
+        response["data"] = {
+            "gauge_address": gauge_address,
+            "provider_boosts": provider_boosts
+        }
+        
+        # Add timing information
+        total_elapsed = time.time() - request_start_time
+        response["timing"] = {
+            "total_seconds": total_elapsed,
+            "boost_calculation_seconds": boost_time
+        }
+        
+        logger.info(f"Gauge boost calculation completed in {total_elapsed:.3f}s for gauge {gauge_address}")
+        return response
+    
+    def get_complete_gauge_info(self, request) -> Dict[str, Any]:
+        """
+        Get complete gauge information including all data (original method for backward compatibility)
+        
+        Args:
+            request: HTTP request object containing the gauge parameter
+            
+        Returns:
+            Dictionary with complete gauge information
+        """
+        request_start_time = time.time()
+        logger.info(f"Starting complete gauge info request with params: {request.args}")
         
         response = {
             "success": False,
@@ -729,10 +926,10 @@ class GaugeInfoService:
         find_gauge_time = time.time() - find_gauge_start
         
         if not gauge_info:
-            response["message"] = "Gauge not found in Curve API"
+            response["message"] = "Gauge not found in local data"
             response["verification"] = verification
             elapsed = time.time() - request_start_time
-            logger.warning(f"Request failed: Gauge {gauge_address} not found in Curve API. Took {elapsed:.3f}s")
+            logger.warning(f"Request failed: Gauge {gauge_address} not found in local data. Took {elapsed:.3f}s")
             return response
         
         # Get provider boosts
@@ -759,7 +956,7 @@ class GaugeInfoService:
         
         # Prepare response
         response["success"] = True
-        response["message"] = "Gauge information retrieved successfully"
+        response["message"] = "Complete gauge information retrieved successfully"
         response["data"] = {
             "pool_name": pool_name,
             "gauge_address": gauge_address,
@@ -805,8 +1002,20 @@ class GaugeInfoService:
             "boost_calculation_seconds": boost_time
         }
         
-        logger.info(f"Gauge info request completed in {total_elapsed:.3f}s for gauge {gauge_address}")
+        logger.info(f"Complete gauge info request completed in {total_elapsed:.3f}s for gauge {gauge_address}")
         return response
+    
+    def get_gauge_info(self, request) -> Dict[str, Any]:
+        """
+        Get information about a specific gauge (backward compatibility - calls get_complete_gauge_info)
+        
+        Args:
+            request: HTTP request object containing the gauge parameter
+            
+        Returns:
+            Dictionary with complete gauge information
+        """
+        return self.get_complete_gauge_info(request)
 
 
 # Example of how to use in a Flask or similar framework
@@ -817,6 +1026,31 @@ from services.gauge_info import GaugeInfoService
 app = Flask(__name__)
 gauge_service = GaugeInfoService()
 
+# Fast endpoint - local data only (~100-300ms)
+@app.route('/api/gauge/basic', methods=['GET'])
+def get_basic_gauge_info():
+    response = gauge_service.get_basic_gauge_info(request)
+    return jsonify(response)
+
+# Medium endpoint - verification only (~1-2s)
+@app.route('/api/gauge/verification', methods=['GET'])
+def get_gauge_verification():
+    response = gauge_service.get_gauge_verification(request)
+    return jsonify(response)
+
+# Medium endpoint - boosts only (~0.5-1s)
+@app.route('/api/gauge/boosts', methods=['GET'])
+def get_gauge_boosts():
+    response = gauge_service.get_gauge_boosts(request)
+    return jsonify(response)
+
+# Complete endpoint - all data (~2-3s, backward compatibility)
+@app.route('/api/gauge/complete', methods=['GET'])
+def get_complete_gauge_info():
+    response = gauge_service.get_complete_gauge_info(request)
+    return jsonify(response)
+
+# Legacy endpoint - backward compatibility
 @app.route('/api/gauge', methods=['GET'])
 def get_gauge_info():
     response = gauge_service.get_gauge_info(request)
