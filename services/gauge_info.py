@@ -1093,18 +1093,13 @@ class GaugeInfoService:
                     # Handle the data structure - gauge_data is always a dict with gauge and inflation_rate
                     if isinstance(gauge_data, dict):
                         # Extract fields from the structure
-                        inflation_rate_str = gauge_data.get("inflation_rate", "0")
+                        inflation_rate = gauge_data.get("inflation_rate", 0)
                         
-                        # Convert string inflation rate to integer for proper sorting
-                        try:
-                            inflation_rate = int(inflation_rate_str)
-                        except (ValueError, TypeError):
-                            inflation_rate = 0
-                        
+                        # Inflation rate is now already an integer, no conversion needed
                         result = {
                             "name": gauge_name,
-                            "address": gauge_data.get("gauge"),  # Get from "gauge" field
-                            "inflation_rate": inflation_rate  # Use converted integer value
+                            "gauge_address": gauge_data.get("gauge"),  # Get from "gauge" field
+                            "inflation_rate": inflation_rate  # Already an integer
                         }
                         search_results.append(result)
                     else:
