@@ -776,7 +776,8 @@ class GaugeInfoService:
             "is_killed": pool_data.get("is_killed", False),
             "has_no_crv": pool_data.get("hasNoCrv", False),
             "pool_type": pool_data.get("type"),
-            "factory": pool_data.get("factory", False)
+            "factory": pool_data.get("factory", False),
+            "curve_key": pool_data.get("curve_key", None)
         }
         
         # Add timing information
