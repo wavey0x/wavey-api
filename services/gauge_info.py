@@ -77,9 +77,21 @@ class GaugeInfoService:
             with open(filepath) as file:
                 data = json.load(file)
                 
-            logger.info(f"Successfully loaded local curve gauge data with {len(data)} gauges")
-            return data
-            
+            # Handle different data structures
+            if isinstance(data, dict):
+                # If data has the same structure as external API
+                if "success" in data and "data" in data:
+                    actual_data = data.get("data", {})
+                    logger.info(f"Successfully loaded local curve gauge data with {len(actual_data)} gauges (API format)")
+                    return actual_data
+                # If data is directly the gauge data
+                else:
+                    logger.info(f"Successfully loaded local curve gauge data with {len(data)} gauges (direct format)")
+                    return data
+            else:
+                logger.warning(f"Unexpected data format in local file: {type(data)}")
+                return None
+                
         except Exception as e:
             logger.error(f"Error loading local curve gauge data: {e}")
             return None
@@ -103,7 +115,9 @@ class GaugeInfoService:
         start_time = time.time()
         
         # Try to get data from local file first
+        logger.info("Cache invalid, attempting to load from local file...")
         local_data = self._get_local_curve_data()
+        
         if local_data:
             # Update cache with local data
             self._gauge_data_cache = local_data
@@ -113,6 +127,8 @@ class GaugeInfoService:
             gauge_count = len(self._gauge_data_cache)
             logger.info(f"Updated cache with {gauge_count} gauges from local file in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
             return self._gauge_data_cache
+        else:
+            logger.warning("Failed to load data from local file")
         
         # Fallback to external API if local file not available
         logger.warning("Local curve gauge data not available, falling back to external API")
@@ -276,6 +292,82 @@ class GaugeInfoService:
                 "cache_stats": self.get_cache_stats()
             }
     
+    def check_local_file_status(self) -> Dict[str, Any]:
+        """
+        Check the status of the local curve gauge data file
+        
+        Returns:
+            Dictionary with file status information
+        """
+        try:
+            filepath = os.getenv('HOME_DIRECTORY')
+            if not filepath:
+                return {
+                    "status": "error",
+                    "message": "HOME_DIRECTORY environment variable not set",
+                    "filepath": None
+                }
+                
+            filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+            
+            if not os.path.exists(filepath):
+                return {
+                    "status": "error",
+                    "message": "Local curve gauge data file not found",
+                    "filepath": filepath
+                }
+            
+            # Get file stats
+            file_stats = os.stat(filepath)
+            file_size = file_stats.st_size
+            
+            # Try to load and parse the file
+            try:
+                with open(filepath) as file:
+                    data = json.load(file)
+                
+                data_type = type(data).__name__
+                if isinstance(data, dict):
+                    if "success" in data and "data" in data:
+                        actual_data = data.get("data", {})
+                        gauge_count = len(actual_data) if isinstance(actual_data, dict) else 0
+                        data_structure = "API format"
+                    else:
+                        gauge_count = len(data)
+                        data_structure = "direct format"
+                else:
+                    gauge_count = "N/A"
+                    data_structure = f"unexpected: {data_type}"
+                
+                return {
+                    "status": "success",
+                    "message": "Local file loaded successfully",
+                    "filepath": filepath,
+                    "file_size_bytes": file_size,
+                    "file_size_mb": round(file_size / (1024 * 1024), 2),
+                    "last_modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+                    "data_type": data_type,
+                    "data_structure": data_structure,
+                    "gauge_count": gauge_count
+                }
+                
+            except json.JSONDecodeError as e:
+                return {
+                    "status": "error",
+                    "message": f"JSON decode error: {str(e)}",
+                    "filepath": filepath,
+                    "file_size_bytes": file_size,
+                    "file_size_mb": round(file_size / (1024 * 1024), 2),
+                    "last_modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat()
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error checking file: {str(e)}",
+                "filepath": filepath if 'filepath' in locals() else None
+            }
+    
     def _find_gauge_by_address(self, gauge_address: str) -> Optional[Dict[str, Any]]:
         """
         Find gauge information by gauge address using direct dictionary lookup
@@ -289,8 +381,16 @@ class GaugeInfoService:
         start_time = time.time()
         all_gauges = self._fetch_all_gauges()
         
+        # Debug: Log the data structure
+        logger.debug(f"All gauges data type: {type(all_gauges)}")
+        logger.debug(f"All gauges keys count: {len(all_gauges) if isinstance(all_gauges, dict) else 'N/A'}")
+        if isinstance(all_gauges, dict) and len(all_gauges) > 0:
+            sample_keys = list(all_gauges.keys())[:3]
+            logger.debug(f"Sample gauge keys: {sample_keys}")
+        
         # Normalize the gauge address for comparison
         gauge_address = gauge_address.lower()
+        logger.debug(f"Looking for gauge address: {gauge_address}")
         
         # Direct dictionary lookup since gauge address is now the key
         if gauge_address in all_gauges:
@@ -304,6 +404,19 @@ class GaugeInfoService:
         
         elapsed = time.time() - start_time
         logger.warning(f"Gauge {gauge_address} not found in {elapsed:.3f}s")
+        
+        # Debug: Check if the gauge address exists in a different format
+        if isinstance(all_gauges, dict):
+            # Check for case-insensitive match
+            for key in all_gauges.keys():
+                if key.lower() == gauge_address:
+                    logger.info(f"Found gauge {gauge_address} with case-insensitive match to key: {key}")
+                    pool_data = all_gauges[key]
+                    return {
+                        "pool_name": pool_data.get("pool_name", key),
+                        "pool_data": pool_data
+                    }
+        
         return None
     
     def get_provider_boosts(self, gauge_address: str) -> Dict[str, Any]:
