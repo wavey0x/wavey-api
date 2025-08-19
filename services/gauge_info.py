@@ -52,8 +52,12 @@ class GaugeInfoService:
         current_time = time.time()
         cache_age = current_time - self._cache_timestamp
         
-        return (self._gauge_data_cache is not None and 
-                cache_age < CACHE_EXPIRATION_SECONDS)
+        is_valid = (self._gauge_data_cache is not None and 
+                   cache_age < CACHE_EXPIRATION_SECONDS)
+        
+        logger.debug(f"Cache validation: cache_data={self._gauge_data_cache is not None}, age={cache_age:.1f}s, ttl={CACHE_EXPIRATION_SECONDS}s, is_valid={is_valid}")
+        
+        return is_valid
     
     def _get_local_curve_data(self) -> Optional[Dict[str, Any]]:
         """
@@ -63,19 +67,44 @@ class GaugeInfoService:
             Dictionary containing curve gauge data or None if file not found
         """
         try:
+            logger.info("Starting local curve gauge data loading...")
+            
             filepath = os.getenv('HOME_DIRECTORY')
+            logger.info(f"HOME_DIRECTORY environment variable: {filepath}")
+            
             if not filepath:
                 logger.warning("HOME_DIRECTORY environment variable not set")
                 return None
                 
             filepath = f'{filepath}/curve-ll-charts/data/curve_gauge_data.json'
+            logger.info(f"Full file path: {filepath}")
             
             if not os.path.exists(filepath):
                 logger.warning(f"Local curve gauge data file not found: {filepath}")
+                # Check if the directory exists
+                dir_path = os.path.dirname(filepath)
+                if os.path.exists(dir_path):
+                    logger.info(f"Directory exists: {dir_path}")
+                    # List files in directory
+                    try:
+                        files = os.listdir(dir_path)
+                        logger.info(f"Files in directory: {files}")
+                    except Exception as e:
+                        logger.error(f"Error listing directory contents: {e}")
+                else:
+                    logger.warning(f"Directory does not exist: {dir_path}")
                 return None
                 
+            logger.info(f"File exists, attempting to read...")
+            
+            # Check file size
+            file_size = os.path.getsize(filepath)
+            logger.info(f"File size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
+            
             with open(filepath) as file:
+                logger.info("File opened successfully, parsing JSON...")
                 data = json.load(file)
+                logger.info(f"JSON parsed successfully, data type: {type(data)}")
                 
             # Handle different data structures
             if isinstance(data, dict):
@@ -94,6 +123,9 @@ class GaugeInfoService:
                 
         except Exception as e:
             logger.error(f"Error loading local curve gauge data: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return None
     
     def _fetch_all_gauges(self) -> Dict[str, Any]:
@@ -125,7 +157,16 @@ class GaugeInfoService:
             
             elapsed = time.time() - start_time
             gauge_count = len(self._gauge_data_cache)
-            logger.info(f"Updated cache with {gauge_count} gauges from local file in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
+            logger.info(f"Successfully updated cache with {gauge_count} gauges from local file in {elapsed:.3f}s (hits: {self._cache_hits}, misses: {self._cache_misses})")
+            
+            # Debug: Log some sample data to verify structure
+            if isinstance(local_data, dict) and len(local_data) > 0:
+                sample_keys = list(local_data.keys())[:3]
+                logger.info(f"Sample gauge keys from local file: {sample_keys}")
+                if sample_keys:
+                    sample_data = local_data[sample_keys[0]]
+                    logger.debug(f"Sample gauge data structure: {type(sample_data)} - keys: {list(sample_data.keys()) if isinstance(sample_data, dict) else 'N/A'}")
+            
             return self._gauge_data_cache
         else:
             logger.warning("Failed to load data from local file")
@@ -292,6 +333,43 @@ class GaugeInfoService:
                 "cache_stats": self.get_cache_stats()
             }
     
+    def force_clear_cache(self) -> Dict[str, Any]:
+        """
+        Force clear the cache and return current status
+        
+        Returns:
+            Dictionary with cache status after clearing
+        """
+        # Clear cache
+        self._gauge_data_cache = None
+        self._cache_timestamp = 0
+        
+        logger.info("Cache forcefully cleared")
+        
+        return {
+            "success": True,
+            "message": "Cache cleared successfully",
+            "cache_stats": self.get_cache_stats()
+        }
+    
+    def get_current_data_status(self) -> Dict[str, Any]:
+        """
+        Get current status of the gauge data without triggering a refresh
+        
+        Returns:
+            Dictionary with current data status
+        """
+        return {
+            "cache_status": {
+                "has_cached_data": self._gauge_data_cache is not None,
+                "cache_timestamp": self._cache_timestamp,
+                "cache_age_seconds": time.time() - self._cache_timestamp if self._cache_timestamp > 0 else None,
+                "is_cache_valid": self._is_cache_valid()
+            },
+            "local_file_status": self.check_local_file_status(),
+            "cache_stats": self.get_cache_stats()
+        }
+    
     def check_local_file_status(self) -> Dict[str, Any]:
         """
         Check the status of the local curve gauge data file
@@ -366,6 +444,127 @@ class GaugeInfoService:
                 "status": "error",
                 "message": f"Error checking file: {str(e)}",
                 "filepath": filepath if 'filepath' in locals() else None
+            }
+    
+    def test_local_file_loading(self) -> Dict[str, Any]:
+        """
+        Test local file loading directly and provide detailed diagnostics
+        
+        Returns:
+            Dictionary with detailed test results
+        """
+        logger.info("=== Testing Local File Loading ===")
+        
+        try:
+            # Test 1: Environment variable
+            home_dir = os.getenv('HOME_DIRECTORY')
+            logger.info(f"Test 1 - HOME_DIRECTORY: {home_dir}")
+            
+            if not home_dir:
+                return {
+                    "success": False,
+                    "error": "HOME_DIRECTORY environment variable not set",
+                    "tests": {
+                        "env_var": False,
+                        "file_path": None,
+                        "file_exists": False,
+                        "file_readable": False,
+                        "json_parse": False
+                    }
+                }
+            
+            # Test 2: File path construction
+            file_path = f'{home_dir}/curve-ll-charts/data/curve_gauge_data.json'
+            logger.info(f"Test 2 - File path: {file_path}")
+            
+            # Test 3: File existence
+            file_exists = os.path.exists(file_path)
+            logger.info(f"Test 3 - File exists: {file_exists}")
+            
+            if not file_exists:
+                # Check directory structure
+                dir_path = os.path.dirname(file_path)
+                dir_exists = os.path.exists(dir_path)
+                logger.info(f"Directory exists: {dir_exists}")
+                
+                if dir_exists:
+                    try:
+                        files = os.listdir(dir_path)
+                        logger.info(f"Files in directory: {files}")
+                    except Exception as e:
+                        logger.error(f"Error listing directory: {e}")
+                
+                return {
+                    "success": False,
+                    "error": "File not found",
+                    "file_path": file_path,
+                    "directory_exists": dir_exists,
+                    "tests": {
+                        "env_var": True,
+                        "file_path": file_path,
+                        "file_exists": False,
+                        "file_readable": False,
+                        "json_parse": False
+                    }
+                }
+            
+            # Test 4: File readability
+            try:
+                file_size = os.path.getsize(file_path)
+                logger.info(f"Test 4 - File size: {file_size} bytes")
+                file_readable = True
+            except Exception as e:
+                logger.error(f"Error getting file size: {e}")
+                file_readable = False
+                file_size = None
+            
+            # Test 5: JSON parsing
+            json_parse_success = False
+            data = None
+            try:
+                with open(file_path, 'r') as file:
+                    data = json.load(file)
+                json_parse_success = True
+                logger.info(f"Test 5 - JSON parse success: {json_parse_success}")
+                logger.info(f"Data type: {type(data)}")
+                if isinstance(data, dict):
+                    logger.info(f"Data keys: {list(data.keys()) if len(data) <= 10 else list(data.keys())[:10] + ['...']}")
+            except Exception as e:
+                logger.error(f"Error parsing JSON: {e}")
+                json_parse_success = False
+            
+            # Return comprehensive test results
+            return {
+                "success": json_parse_success,
+                "file_path": file_path,
+                "file_size_bytes": file_size,
+                "file_size_mb": round(file_size / (1024 * 1024), 2) if file_size else None,
+                "data_type": type(data).__name__ if data else None,
+                "data_structure": "API format" if data and isinstance(data, dict) and "success" in data and "data" in data else "direct format" if data and isinstance(data, dict) else "unknown",
+                "gauge_count": len(data) if data and isinstance(data, dict) else 0,
+                "tests": {
+                    "env_var": True,
+                    "file_path": file_path,
+                    "file_exists": True,
+                    "file_readable": file_readable,
+                    "json_parse": json_parse_success
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in test_local_file_loading: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            return {
+                "success": False,
+                "error": str(e),
+                "tests": {
+                    "env_var": False,
+                    "file_path": None,
+                    "file_exists": False,
+                    "file_readable": False,
+                    "json_parse": False
+                }
             }
     
     def _find_gauge_by_address(self, gauge_address: str) -> Optional[Dict[str, Any]]:
