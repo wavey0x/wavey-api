@@ -50,6 +50,7 @@ def get_harvests():
 def ll_info():
     filepath = os.getenv('HOME_DIRECTORY')
     filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
+
     files = glob.glob(filepath)
     if not files:
         return "File not found", 404
@@ -57,7 +58,7 @@ def ll_info():
         # Open the JSON file and load its contents
         with open(filepath) as file:
             data = json.load(file)
-        # Return the JSON data as a response
+        del data['curve_gauge_data']
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
