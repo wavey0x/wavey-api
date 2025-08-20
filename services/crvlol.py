@@ -59,6 +59,7 @@ def ll_info():
         with open(filepath) as file:
             data = json.load(file)
         del data['curve_gauge_data']
+        del data['curve_gauges_by_name']
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
