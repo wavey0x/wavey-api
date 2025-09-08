@@ -993,6 +993,8 @@ class GaugeInfoService:
             },
             # Add pool URLs for direct links to Curve UI - only first URL
             "pool_urls": pool_urls,
+            "lendingVaultAddress": lendingVaultAddress,
+            "lendingVaultUrls": lendingVaultUrls,
             "gauge_controller": pool_data.get("gauge_controller", {}),
             "gauge_relative_weight": pool_data.get("gauge_controller", {}).get("gauge_relative_weight"),
             "is_killed": pool_data.get("is_killed", False),
