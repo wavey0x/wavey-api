@@ -735,9 +735,9 @@ class GaugeInfoService:
         lendingVaultUrls = pool_data.get("lendingVaultUrls", {})
         if lendingVaultUrls:
             lendingVaultUrls = {
-                "deposit": lendingVaultUrls.get("deposit", [])[0] if lendingVaultUrls.get("deposit") else None,
-                "withdraw": lendingVaultUrls.get("withdraw", [])[0] if lendingVaultUrls.get("withdraw") else None,
-                "borrow": lendingVaultUrls.get("borrow", [])[0] if lendingVaultUrls.get("borrow") else None
+                "deposit": lendingVaultUrls.get("deposit"),  # Already a string, no [0] needed
+                "withdraw": lendingVaultUrls.get("withdraw"),  # Already a string, no [0] needed
+                "borrow": lendingVaultUrls.get("borrow")  # Already a string, no [0] needed
             }
         
         # Extract APY information
@@ -969,9 +969,9 @@ class GaugeInfoService:
         lendingVaultUrls = pool_data.get("lendingVaultUrls", {})
         if lendingVaultUrls:
             lendingVaultUrls = {
-                "deposit": lendingVaultUrls.get("deposit", [])[0] if lendingVaultUrls.get("deposit") else None,
-                "withdraw": lendingVaultUrls.get("withdraw", [])[0] if lendingVaultUrls.get("withdraw") else None,
-                "borrow": lendingVaultUrls.get("borrow", [])[0] if lendingVaultUrls.get("borrow") else None
+                "deposit": lendingVaultUrls.get("deposit"),  # Already a string
+                "withdraw": lendingVaultUrls.get("withdraw"),  # Already a string
+                "borrow": lendingVaultUrls.get("borrow")  # Already a string
             }
         
         # Prepare response
