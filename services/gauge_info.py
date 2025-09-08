@@ -954,6 +954,15 @@ class GaugeInfoService:
             "deposit": pool_urls_raw.get("deposit", [])[0] if pool_urls_raw.get("deposit") else None,
             "withdraw": pool_urls_raw.get("withdraw", [])[0] if pool_urls_raw.get("withdraw") else None
         }
+
+        lendingVaultAddress = pool_data.get("lendingVaultAddress", None)
+        lendingVaultUrls = pool_data.get("lendingVaultUrls", {})
+        if lendingVaultUrls:
+            lendingVaultUrls = {
+                "deposit": lendingVaultUrls.get("deposit", [])[0] if lendingVaultUrls.get("deposit") else None,
+                "withdraw": lendingVaultUrls.get("withdraw", [])[0] if lendingVaultUrls.get("withdraw") else None,
+                "borrow": lendingVaultUrls.get("borrow", [])[0] if lendingVaultUrls.get("borrow") else None
+            }
         
         # Prepare response
         response["success"] = True
