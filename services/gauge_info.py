@@ -731,6 +731,14 @@ class GaugeInfoService:
         # Extract relevant information
         pool_data = gauge_info["pool_data"]
         pool_name = gauge_info["pool_name"]
+        lendingVaultAddress = pool_data.get("lendingVaultAddress", None)
+        lendingVaultUrls = pool_data.get("lendingVaultUrls", {})
+        if lendingVaultUrls:
+            lendingVaultUrls = {
+                "deposit": lendingVaultUrls.get("deposit", [])[0] if lendingVaultUrls.get("deposit") else None,
+                "withdraw": lendingVaultUrls.get("withdraw", [])[0] if lendingVaultUrls.get("withdraw") else None,
+                "borrow": lendingVaultUrls.get("borrow", [])[0] if lendingVaultUrls.get("borrow") else None
+            }
         
         # Extract APY information
         gauge_crv_apy = pool_data.get("gaugeCrvApy", [None, None])
@@ -777,7 +785,9 @@ class GaugeInfoService:
             "has_no_crv": pool_data.get("hasNoCrv", False),
             "pool_type": pool_data.get("type"),
             "factory": pool_data.get("factory", False),
-            "curve_key": pool_data.get("curve_key", None)
+            "curve_key": pool_data.get("curve_key", None),
+            "lendingVaultAddress": lendingVaultAddress,
+            "lendingVaultUrls": lendingVaultUrls
         }
         
         # Add timing information
