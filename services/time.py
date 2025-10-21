@@ -74,10 +74,10 @@ def convert_timestamp(unix_timestamp):
     # Add Ethereum block information
     try:
         eth_block = closest_block_before_timestamp(unix_timestamp)
-        response['ethereum_block'] = eth_block
+        response['eth_block'] = eth_block
     except Exception as e:
         # If block lookup fails (e.g., timestamp in future, RPC issue), don't break the response
-        response['ethereum_block'] = None
-        response['ethereum_block_error'] = str(e)
+        response['eth_block'] = None
+        response['eth_block_error'] = str(e)
 
     return response
