@@ -166,3 +166,87 @@ class GaugeVoteInfo(db.Model):
             'block': self.block,
             'account_alias': self.account_alias
         }
+
+
+class RsupIncentive(db.Model):
+    __tablename__ = 'rsup_incentives'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    epoch = db.Column(db.Integer, nullable=False)
+    total_incentives = db.Column(db.Float, nullable=False)
+    convex_amount = db.Column(db.Float, nullable=False)
+    yearn_amount = db.Column(db.Float, nullable=False)
+    convex_votes_per_usd = db.Column(db.Float, nullable=False)
+    yearn_votes_per_usd = db.Column(db.Float, nullable=False)
+    convex_votes = db.Column(db.Float, nullable=False)
+    yearn_votes = db.Column(db.Float, nullable=False)
+    gauge_data = db.Column(db.JSON, nullable=False)
+    transaction_hash = db.Column(db.String, nullable=False)
+    block_number = db.Column(db.BigInteger, nullable=False)
+    timestamp = db.Column(db.BigInteger, nullable=False)
+    date_str = db.Column(db.String, nullable=False)
+    period_start = db.Column(db.BigInteger, nullable=False)
+    log_index = db.Column(db.Integer)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'epoch': self.epoch,
+            'total_incentives': self.total_incentives,
+            'convex_amount': self.convex_amount,
+            'yearn_amount': self.yearn_amount,
+            'convex_votes_per_usd': self.convex_votes_per_usd,
+            'yearn_votes_per_usd': self.yearn_votes_per_usd,
+            'convex_votes': self.convex_votes,
+            'yearn_votes': self.yearn_votes,
+            'gauge_data': self.gauge_data,
+            'transaction_hash': self.transaction_hash,
+            'block_number': self.block_number,
+            'timestamp': self.timestamp,
+            'date_str': self.date_str,
+            'period_start': self.period_start,
+            'log_index': self.log_index
+        }
+
+
+class Incentive(db.Model):
+    __tablename__ = 'incentives'
+
+    id = db.Column(db.Integer, primary_key=True)
+    protocol = db.Column(db.String, nullable=False)
+    epoch = db.Column(db.Integer)
+    total_incentives = db.Column(db.Float, nullable=False)
+    votium_amount = db.Column(db.Float, nullable=False)
+    votemarket_amount = db.Column(db.Float, nullable=False)
+    votium_votes_per_usd = db.Column(db.Float)
+    votemarket_votes_per_usd = db.Column(db.Float)
+    votium_votes = db.Column(db.Float, nullable=False)
+    votemarket_votes = db.Column(db.Float, nullable=False)
+    gauge_data = db.Column(db.JSON, nullable=False)
+    transaction_hash = db.Column(db.String, nullable=False)
+    block_number = db.Column(db.BigInteger, nullable=False)
+    timestamp = db.Column(db.BigInteger, nullable=False)
+    date_str = db.Column(db.String, nullable=False)
+    period_start = db.Column(db.BigInteger, nullable=False)
+    log_index = db.Column(db.Integer)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'protocol': self.protocol,
+            'epoch': self.epoch,
+            'total_incentives': self.total_incentives,
+            'votium_amount': self.votium_amount,
+            'votemarket_amount': self.votemarket_amount,
+            'votium_votes_per_usd': self.votium_votes_per_usd,
+            'votemarket_votes_per_usd': self.votemarket_votes_per_usd,
+            'votium_votes': self.votium_votes,
+            'votemarket_votes': self.votemarket_votes,
+            'gauge_data': self.gauge_data,
+            'transaction_hash': self.transaction_hash,
+            'block_number': self.block_number,
+            'timestamp': self.timestamp,
+            'date_str': self.date_str,
+            'period_start': self.period_start,
+            'log_index': self.log_index
+        }

@@ -8,6 +8,7 @@ from config import Config
 from flask_cors import CORS
 from services.gauge_info import GaugeInfoService
 from routes import api
+import services.resupply as resupply
 import time
 
 CACHE_EXPIRATION_SECONDS = 100
@@ -142,6 +143,16 @@ def refresh_cache():
         
     result = gauge_service.force_refresh_cache()
     return jsonify(result)
+
+# Resupply endpoints
+@app.route('/resupply/incentive_report', methods=['GET'])
+def get_incentive_report():
+    """Get incentive report data from incentives table"""
+    start_time = time.time()
+    response = resupply.incentive_report(request)
+    elapsed = time.time() - start_time
+    logger.info(f"/resupply/incentive_report route completed in {elapsed:.3f}s")
+    return response
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3001, debug=True)
