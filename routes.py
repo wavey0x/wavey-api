@@ -6,6 +6,7 @@ import services.status as status
 import services.ybs as ybs
 import services.crvlol as crvlol
 import services.gauge_voting as gauge_voting
+import services.resupply as resupply
 from services.gauge_info import GaugeInfoService
 
 api = Blueprint('api', __name__)
@@ -68,3 +69,8 @@ def get_gauge_votes():
 @api.route('/crvlol/gov_proposals', methods=['GET'])
 def get_curve_gov_proposals():
     return crvlol.get_curve_gov_proposals()
+
+@api.route('/resupply/incentive_report', methods=['GET'])
+def get_resupply_incentive_report():
+    """Expose incentive report under /api namespace"""
+    return resupply.incentive_report(request)
