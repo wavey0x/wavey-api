@@ -7,6 +7,7 @@ from database import db
 from config import Config
 from flask_cors import CORS
 from services.gauge_info import GaugeInfoService
+from services.factory_dashboard import FactoryDashboardError, FactoryDashboardService
 from routes import api
 import services.resupply as resupply
 import time
@@ -45,6 +46,10 @@ app.register_blueprint(api, url_prefix='/api')
 
 # Create a single gauge service instance for the app
 gauge_service = GaugeInfoService()
+factory_dashboard_service = FactoryDashboardService(
+    app.config["FACTORY_DASHBOARD_DB_PATH"],
+    app.config["FACTORY_DASHBOARD_BUSY_TIMEOUT_MS"],
+)
 
 # Root level endpoint for gauge info - this is what your frontend is calling
 @app.route('/', methods=['GET'])
@@ -56,6 +61,23 @@ def root():
         logger.info(f"Root route with gauge parameter completed in {elapsed:.3f}s")
         return jsonify(response)
     return jsonify({"message": "Welcome! Use /?gauge=<address> to get gauge info, or /api for API endpoints."})
+
+
+@app.route('/factory-dashboard', methods=['GET'])
+def factory_dashboard():
+    start_time = time.time()
+    try:
+        response = jsonify(factory_dashboard_service.get_dashboard())
+        response.headers["Cache-Control"] = (
+            f'public, max-age={app.config["FACTORY_DASHBOARD_CACHE_MAX_AGE_SECONDS"]}, stale-while-revalidate=300'
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"/factory-dashboard route completed in {elapsed:.3f}s")
+        return response
+    except FactoryDashboardError as exc:
+        elapsed = time.time() - start_time
+        logger.error(f"/factory-dashboard route failed in {elapsed:.3f}s: {exc.message}")
+        return jsonify({"error": exc.message}), exc.status_code
 
 # Existing gauge route at /api/gauge
 @app.route('/api/gauge', methods=['GET'])
