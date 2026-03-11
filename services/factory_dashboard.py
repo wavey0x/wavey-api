@@ -55,6 +55,20 @@ JOIN tokens t ON t.address = stbl.token_address
 ORDER BY s.vault_address, stbl.strategy_address, t.symbol
 """
 
+KICKS_SQL = """
+SELECT
+    k.strategy_address,
+    k.tx_hash,
+    k.status,
+    k.token_address,
+    k.usd_value,
+    k.created_at,
+    t.symbol AS token_symbol
+FROM kick_txs k
+LEFT JOIN tokens t ON t.address = k.token_address
+ORDER BY k.strategy_address, k.created_at DESC
+"""
+
 
 class FactoryDashboardError(Exception):
     def __init__(self, message, status_code=500):
@@ -77,8 +91,10 @@ class FactoryDashboardService:
             summary_row = conn.execute(SUMMARY_SQL).fetchone()
             token_rows = conn.execute(self._build_token_catalog_sql(schema_features)).fetchall()
             detail_rows = conn.execute(self._build_detail_rows_sql(schema_features)).fetchall()
+            kick_rows = conn.execute(KICKS_SQL).fetchall() if schema_features["kick_txs"] else []
 
-        rows = self._assemble_rows(detail_rows)
+        kicks_by_strategy = self._group_kicks(kick_rows)
+        rows = self._assemble_rows(detail_rows, kicks_by_strategy)
         latest_scan_at = summary_row["latest_scan_at"] if summary_row else None
 
         return {
@@ -147,7 +163,24 @@ class FactoryDashboardService:
             "logoUrl": row["logo_url"],
         }
 
-    def _assemble_rows(self, detail_rows):
+    def _group_kicks(self, kick_rows):
+        kicks_by_strategy = {}
+        for row in kick_rows:
+            addr = row["strategy_address"]
+            if addr not in kicks_by_strategy:
+                kicks_by_strategy[addr] = []
+            kicks = kicks_by_strategy[addr]
+            if len(kicks) < 5:
+                kicks.append({
+                    "txHash": row["tx_hash"],
+                    "status": row["status"],
+                    "tokenSymbol": row["token_symbol"],
+                    "usdValue": row["usd_value"],
+                    "createdAt": row["created_at"],
+                })
+        return kicks_by_strategy
+
+    def _assemble_rows(self, detail_rows, kicks_by_strategy):
         rows = []
         grouped_rows = {}
 
@@ -165,6 +198,7 @@ class FactoryDashboardService:
                     "active": bool(detail_row["active"]) if detail_row["active"] is not None else None,
                     "scannedAt": detail_row["scanned_at"],
                     "balances": [],
+                    "kicks": kicks_by_strategy.get(detail_row["strategy_address"], []),
                 }
                 grouped_rows[row_key] = grouped_row
                 rows.append(grouped_row)
@@ -190,7 +224,14 @@ class FactoryDashboardService:
         return {
             "strategies.auction_address": self._has_column(conn, "strategies", "auction_address"),
             "tokens.logo_url": self._has_column(conn, "tokens", "logo_url"),
+            "kick_txs": self._has_table(conn, "kick_txs"),
         }
+
+    def _has_table(self, conn, table_name):
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+        ).fetchone()
+        return row is not None
 
     def _has_column(self, conn, table_name, column_name):
         rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
