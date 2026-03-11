@@ -66,6 +66,7 @@ SELECT
     t.symbol AS token_symbol
 FROM kick_txs k
 LEFT JOIN tokens t ON t.address = k.token_address
+WHERE k.tx_hash IS NOT NULL AND k.tx_hash != ''
 ORDER BY k.strategy_address, k.created_at DESC
 """
 
