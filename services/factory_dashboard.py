@@ -40,6 +40,8 @@ SELECT
     v.name AS vault_name,
     v.symbol AS vault_symbol,
     {auction_column} AS auction_address,
+    {auction_version_column} AS auction_version,
+    {deposit_limit_column} AS deposit_limit,
     s.active,
     stbl.scanned_at,
     stbl.token_address,
@@ -196,6 +198,8 @@ class FactoryDashboardService:
                     "vaultName": detail_row["vault_name"],
                     "vaultSymbol": detail_row["vault_symbol"],
                     "auctionAddress": detail_row["auction_address"],
+                    "auctionVersion": detail_row["auction_version"],
+                    "depositLimit": detail_row["deposit_limit"],
                     "active": bool(detail_row["active"]) if detail_row["active"] is not None else None,
                     "scannedAt": detail_row["scanned_at"],
                     "balances": [],
@@ -224,7 +228,9 @@ class FactoryDashboardService:
     def _get_schema_features(self, conn):
         return {
             "strategies.auction_address": self._has_column(conn, "strategies", "auction_address"),
+            "strategies.auction_version": self._has_column(conn, "strategies", "auction_version"),
             "tokens.logo_url": self._has_column(conn, "tokens", "logo_url"),
+            "vaults.deposit_limit": self._has_column(conn, "vaults", "deposit_limit"),
             "kick_txs": self._has_table(conn, "kick_txs"),
         }
 
@@ -244,8 +250,15 @@ class FactoryDashboardService:
 
     def _build_detail_rows_sql(self, schema_features):
         auction_column = "s.auction_address" if schema_features["strategies.auction_address"] else "NULL"
+        auction_version_column = "s.auction_version" if schema_features["strategies.auction_version"] else "NULL"
         logo_column = "t.logo_url" if schema_features["tokens.logo_url"] else "NULL"
-        return DETAIL_ROWS_SQL.format(auction_column=auction_column, logo_column=logo_column)
+        deposit_limit_column = "v.deposit_limit" if schema_features["vaults.deposit_limit"] else "NULL"
+        return DETAIL_ROWS_SQL.format(
+            auction_column=auction_column,
+            auction_version_column=auction_version_column,
+            logo_column=logo_column,
+            deposit_limit_column=deposit_limit_column,
+        )
 
     def _translate_sqlite_error(self, exc):
         message = str(exc).lower()
