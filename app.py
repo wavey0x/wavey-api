@@ -79,6 +79,25 @@ def factory_dashboard():
         logger.error(f"/factory-dashboard route failed in {elapsed:.3f}s: {exc.message}")
         return jsonify({"error": exc.message}), exc.status_code
 
+
+@app.route('/factory-dashboard/kicks', methods=['GET'])
+def factory_dashboard_kicks():
+    start_time = time.time()
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        status = request.args.get('status', None)
+        response = jsonify(factory_dashboard_service.get_kicks(limit, offset, status))
+        response.headers["Cache-Control"] = "public, max-age=10, stale-while-revalidate=30"
+        elapsed = time.time() - start_time
+        logger.info(f"/factory-dashboard/kicks route completed in {elapsed:.3f}s")
+        return response
+    except FactoryDashboardError as exc:
+        elapsed = time.time() - start_time
+        logger.error(f"/factory-dashboard/kicks route failed in {elapsed:.3f}s: {exc.message}")
+        return jsonify({"error": exc.message}), exc.status_code
+
+
 # Existing gauge route at /api/gauge
 @app.route('/api/gauge', methods=['GET'])
 def get_gauge_info():

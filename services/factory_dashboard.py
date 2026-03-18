@@ -72,6 +72,41 @@ WHERE k.tx_hash IS NOT NULL AND k.tx_hash != ''
 ORDER BY k.strategy_address, k.created_at DESC
 """
 
+KICKS_DETAIL_SQL = """
+SELECT
+    k.id,
+    k.run_id,
+    k.strategy_address,
+    k.token_address,
+    k.token_symbol,
+    k.auction_address,
+    k.want_address,
+    k.want_symbol,
+    k.normalized_balance,
+    k.sell_amount,
+    k.starting_price,
+    k.minimum_price,
+    k.start_price_buffer_bps,
+    k.min_price_buffer_bps,
+    k.quote_amount,
+    k.quote_response_json,
+    k.price_usd,
+    k.usd_value,
+    k.status,
+    k.tx_hash,
+    k.gas_used,
+    k.gas_price_gwei,
+    k.block_number,
+    k.error_message,
+    k.created_at
+FROM kick_txs k
+ORDER BY k.created_at DESC
+LIMIT ? OFFSET ?
+"""
+
+KICKS_COUNT_SQL = "SELECT COUNT(*) AS total FROM kick_txs"
+KICKS_COUNT_FILTERED_SQL = "SELECT COUNT(*) AS total FROM kick_txs WHERE status = ?"
+
 
 class FactoryDashboardError(Exception):
     def __init__(self, message, status_code=500):
@@ -111,6 +146,62 @@ class FactoryDashboardService:
             "tokens": [self._serialize_token_row(row) for row in token_rows],
             "rows": rows,
         }
+
+    def get_kicks(self, limit=100, offset=0, status=None):
+        limit = min(max(int(limit), 1), 500)
+        offset = max(int(offset), 0)
+
+        with self._connect() as conn:
+            self._warn_if_not_wal(conn)
+
+            if not self._has_table(conn, "kick_txs"):
+                return {"kicks": [], "total": 0}
+
+            if status:
+                count_row = conn.execute(KICKS_COUNT_FILTERED_SQL, (status,)).fetchone()
+                detail_sql = KICKS_DETAIL_SQL.replace(
+                    "ORDER BY k.created_at DESC",
+                    "WHERE k.status = ? ORDER BY k.created_at DESC",
+                )
+                kick_rows = conn.execute(detail_sql, (status, limit, offset)).fetchall()
+            else:
+                count_row = conn.execute(KICKS_COUNT_SQL).fetchone()
+                kick_rows = conn.execute(KICKS_DETAIL_SQL, (limit, offset)).fetchall()
+
+        total = count_row["total"] if count_row else 0
+
+        kicks = []
+        for row in kick_rows:
+            kick = {
+                "id": row["id"],
+                "runId": row["run_id"],
+                "strategyAddress": row["strategy_address"],
+                "tokenAddress": row["token_address"],
+                "tokenSymbol": row["token_symbol"],
+                "auctionAddress": row["auction_address"],
+                "wantAddress": row["want_address"],
+                "wantSymbol": row["want_symbol"],
+                "normalizedBalance": row["normalized_balance"],
+                "sellAmount": row["sell_amount"],
+                "startingPrice": row["starting_price"],
+                "minimumPrice": row["minimum_price"],
+                "startPriceBufferBps": row["start_price_buffer_bps"],
+                "minPriceBufferBps": row["min_price_buffer_bps"],
+                "quoteAmount": row["quote_amount"],
+                "quoteResponseJson": row["quote_response_json"],
+                "priceUsd": row["price_usd"],
+                "usdValue": row["usd_value"],
+                "status": row["status"],
+                "txHash": row["tx_hash"],
+                "gasUsed": row["gas_used"],
+                "gasPriceGwei": row["gas_price_gwei"],
+                "blockNumber": row["block_number"],
+                "errorMessage": row["error_message"],
+                "createdAt": row["created_at"],
+            }
+            kicks.append(kick)
+
+        return {"kicks": kicks, "total": total}
 
     @contextmanager
     def _connect(self):
