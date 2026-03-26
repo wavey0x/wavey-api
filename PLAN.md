@@ -1,10 +1,10 @@
-# Factory Dashboard Endpoint Plan
+# Tidal Endpoint Plan
 
 ## Goal
 
 Add a read-only endpoint to the existing Flask service:
 
-- `GET /factory-dashboard`
+- `GET /tidal`
 
 The endpoint reads from the scanner's SQLite database, assembles the dashboard object from normalized tables at request time, and returns raw JSON with no envelope.
 
@@ -153,11 +153,11 @@ Notes:
 
 Add to `.env`:
 
-- `FACTORY_DASHBOARD_DB_PATH` — absolute path to the scanner's SQLite file (required).
-- `FACTORY_DASHBOARD_BUSY_TIMEOUT_MS` — SQLite busy timeout in ms (default: `5000`).
-- `FACTORY_DASHBOARD_CACHE_MAX_AGE_SECONDS` — `Cache-Control` max-age (default: `30`).
+- `TIDAL_DB_PATH` — absolute path to the scanner's SQLite file (required).
+- `TIDAL_BUSY_TIMEOUT_MS` — SQLite busy timeout in ms (default: `5000`).
+- `TIDAL_CACHE_MAX_AGE_SECONDS` — `Cache-Control` max-age (default: `30`).
 
-Missing `FACTORY_DASHBOARD_DB_PATH` is a startup misconfiguration; fail loudly.
+Missing `TIDAL_DB_PATH` is a startup misconfiguration; fail loudly.
 
 ## SQLite Connection
 
@@ -239,16 +239,16 @@ Group in Python by `(strategy_address, vault_address)` to produce rows with nest
 Register a root-level route in `app.py`:
 
 ```python
-@app.route("/factory-dashboard")
-def factory_dashboard():
+@app.route("/tidal")
+def tidal():
     ...
 ```
 
-Keep the handler thin — delegate to `services/factory_dashboard.py`.
+Keep the handler thin — delegate to `services/tidal.py`.
 
 Module split:
 
-- `services/factory_dashboard.py` — connection helper, queries, assembly
+- `services/tidal.py` — connection helper, queries, assembly
 - `config.py` — new env vars
 - `app.py` — route registration
 
@@ -256,7 +256,7 @@ Module split:
 
 | Condition | Response |
 |-----------|----------|
-| `FACTORY_DASHBOARD_DB_PATH` not set | `500` |
+| `TIDAL_DB_PATH` not set | `500` |
 | DB file missing or unreadable | `500` |
 | Required table or column missing | `500` |
 | Lock contention beyond `busy_timeout` | `503` with logging |
@@ -272,9 +272,9 @@ Content-Type: application/json
 
 ## Implementation Sequence
 
-1. **Config** — add `FACTORY_DASHBOARD_DB_PATH` and optional settings to `config.py` and `.env`.
-2. **Read service** — add `services/factory_dashboard.py` with connection helper, three query functions, and response assembly.
-3. **Route** — register `GET /factory-dashboard` in `app.py`, wire to service, add cache headers.
+1. **Config** — add `TIDAL_DB_PATH` and optional settings to `config.py` and `.env`.
+2. **Read service** — add `services/tidal.py` with connection helper, three query functions, and response assembly.
+3. **Route** — register `GET /tidal` in `app.py`, wire to service, add cache headers.
 4. **Verify** — test against the scanner's live SQLite file. Confirm response shape, null handling, and concurrent-read behavior.
 
 ## Non-Goals

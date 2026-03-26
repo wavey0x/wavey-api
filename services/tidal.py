@@ -240,14 +240,14 @@ AUCTION_IDENTITY_ABI = [
 ]
 
 
-class FactoryDashboardError(Exception):
+class TidalError(Exception):
     def __init__(self, message, status_code=500):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
 
 
-class FactoryDashboardService:
+class TidalService:
     def __init__(
         self,
         db_path,
@@ -444,9 +444,9 @@ class FactoryDashboardService:
             strategy_context = self._load_strategy_deploy_context(conn, strategy_key)
 
         if strategy_context["auctionAddress"]:
-            raise FactoryDashboardError("Strategy already has an auction mapped", status_code=409)
+            raise TidalError("Strategy already has an auction mapped", status_code=409)
         if not strategy_context["wantAddress"]:
-            raise FactoryDashboardError("Strategy is missing want token metadata", status_code=409)
+            raise TidalError("Strategy is missing want token metadata", status_code=409)
 
         balance = self._select_deploy_balance(strategy_context)
         quote = self._quote_token(
@@ -461,7 +461,7 @@ class FactoryDashboardService:
 
         if self.deploy_require_curve_quote and quote["providerAmounts"].get("curve", 0) <= 0:
             curve_status = quote["providerStatuses"].get("curve", "not present")
-            raise FactoryDashboardError(
+            raise TidalError(
                 f"Curve quote unavailable for deploy inference (status: {curve_status})",
                 status_code=409,
             )
@@ -472,7 +472,7 @@ class FactoryDashboardService:
             governance_address=self.deploy_governance_address,
         )
         if matching_auctions:
-            raise FactoryDashboardError(
+            raise TidalError(
                 f"Matching auction already exists in target factory: {matching_auctions[0]}",
                 status_code=409,
             )
@@ -524,7 +524,7 @@ class FactoryDashboardService:
     def _connect(self):
         db_path = Path(self.db_path)
         if not db_path.is_file():
-            raise FactoryDashboardError("Factory dashboard database file is missing or unreadable")
+            raise TidalError("Tidal database file is missing or unreadable")
 
         db_uri = f"file:{quote(db_path.as_posix(), safe='/')}?mode=ro"
 
@@ -534,13 +534,13 @@ class FactoryDashboardService:
             conn.execute("PRAGMA query_only = ON")
             conn.row_factory = sqlite3.Row
         except sqlite3.Error as exc:
-            logger.error("Failed to open factory dashboard database", exc_info=True)
+            logger.error("Failed to open tidal database", exc_info=True)
             raise self._translate_sqlite_error(exc) from exc
 
         try:
             yield conn
         except sqlite3.Error as exc:
-            logger.error("Factory dashboard query failed", exc_info=True)
+            logger.error("Tidal query failed", exc_info=True)
             raise self._translate_sqlite_error(exc) from exc
         finally:
             conn.close()
@@ -549,14 +549,14 @@ class FactoryDashboardService:
     def _connect_rw(self):
         db_path = Path(self.db_path)
         if not db_path.is_file():
-            raise FactoryDashboardError("Factory dashboard database file is missing or unreadable")
+            raise TidalError("Tidal database file is missing or unreadable")
 
         try:
             conn = sqlite3.connect(db_path)
             conn.execute(f"PRAGMA busy_timeout = {self.busy_timeout_ms}")
             conn.row_factory = sqlite3.Row
         except sqlite3.Error as exc:
-            logger.error("Failed to open factory dashboard database for write", exc_info=True)
+            logger.error("Failed to open tidal database for write", exc_info=True)
             raise self._translate_sqlite_error(exc) from exc
 
         try:
@@ -564,7 +564,7 @@ class FactoryDashboardService:
             conn.commit()
         except sqlite3.Error as exc:
             conn.rollback()
-            logger.error("Factory dashboard write failed", exc_info=True)
+            logger.error("Tidal write failed", exc_info=True)
             raise self._translate_sqlite_error(exc) from exc
         finally:
             conn.close()
@@ -581,16 +581,16 @@ class FactoryDashboardService:
                 journal_mode_row = conn.execute("PRAGMA journal_mode").fetchone()
                 journal_mode = journal_mode_row[0] if journal_mode_row else None
                 if str(journal_mode).lower() != "wal":
-                    logger.warning("Factory dashboard SQLite journal mode is %s, expected wal", journal_mode)
+                    logger.warning("Tidal SQLite journal mode is %s, expected wal", journal_mode)
             except sqlite3.Error:
-                logger.warning("Unable to verify factory dashboard SQLite journal mode", exc_info=True)
+                logger.warning("Unable to verify tidal SQLite journal mode", exc_info=True)
             finally:
                 self._journal_mode_checked = True
 
     def _load_strategy_deploy_context(self, conn, strategy_address):
         rows = conn.execute(STRATEGY_DEPLOY_CONTEXT_SQL, (strategy_address,)).fetchall()
         if not rows:
-            raise FactoryDashboardError("Strategy not found", status_code=404)
+            raise TidalError("Strategy not found", status_code=404)
 
         first = rows[0]
         context = {
@@ -622,7 +622,7 @@ class FactoryDashboardService:
 
     def _load_kick_auctionscan_context(self, conn, kick_id, schema_features):
         if not schema_features["kick_txs"]:
-            raise FactoryDashboardError("Kick history is unavailable", status_code=404)
+            raise TidalError("Kick history is unavailable", status_code=404)
 
         round_id_column = "k.auctionscan_round_id" if schema_features["kick_txs.auctionscan_round_id"] else "NULL"
         last_checked_at_column = (
@@ -648,7 +648,7 @@ class FactoryDashboardService:
             (kick_id,),
         ).fetchone()
         if row is None:
-            raise FactoryDashboardError("Kick not found", status_code=404)
+            raise TidalError("Kick not found", status_code=404)
 
         operation_type = row["operation_type"] or "kick"
         status = row["status"]
@@ -709,7 +709,7 @@ class FactoryDashboardService:
         )
 
         if not candidates:
-            raise FactoryDashboardError(
+            raise TidalError(
                 "No eligible priced non-want token balance is available to infer deploy starting price",
                 status_code=409,
             )
@@ -741,7 +741,7 @@ class FactoryDashboardService:
                 time.sleep(2.0)
 
         if last_result is None or last_result["amountOutRaw"] is None:
-            raise FactoryDashboardError("No quote available to infer deploy starting price", status_code=409)
+            raise TidalError("No quote available to infer deploy starting price", status_code=409)
         return last_result
 
     def _parse_quote_response(self, payload, request_url):
@@ -815,15 +815,15 @@ class FactoryDashboardService:
     def _compute_starting_price(self, amount_out_raw, token_out_decimals):
         parsed_amount = self._parse_decimal(amount_out_raw)
         if parsed_amount is None or parsed_amount <= 0:
-            raise FactoryDashboardError("Quote amount is missing or zero", status_code=409)
+            raise TidalError("Quote amount is missing or zero", status_code=409)
         if token_out_decimals is None:
-            raise FactoryDashboardError("Quote response is missing output token decimals", status_code=502)
+            raise TidalError("Quote response is missing output token decimals", status_code=502)
 
         normalized = parsed_amount / (Decimal(10) ** int(token_out_decimals))
         buffer = Decimal(1) + Decimal(self.deploy_start_price_buffer_bps) / Decimal(10_000)
         starting_price = int((normalized * buffer).to_integral_value(rounding=ROUND_CEILING))
         if starting_price <= 0:
-            raise FactoryDashboardError("Computed starting price is zero", status_code=409)
+            raise TidalError("Computed starting price is zero", status_code=409)
         return starting_price
 
     def _find_matching_auctions(self, *, want_address, receiver_address, governance_address):
@@ -834,7 +834,7 @@ class FactoryDashboardService:
             )
             auction_addresses = factory.functions.getAllAuctions().call()
         except Exception as exc:
-            raise FactoryDashboardError(f"Unable to read target auction factory: {exc}", status_code=502) from exc
+            raise TidalError(f"Unable to read target auction factory: {exc}", status_code=502) from exc
 
         want_key = want_address.lower()
         receiver_key = receiver_address.lower()
@@ -916,7 +916,7 @@ class FactoryDashboardService:
             )
             tx_data = create_fn._encode_transaction_data()
         except Exception as exc:
-            raise FactoryDashboardError(f"Unable to build deploy transaction: {exc}", status_code=502) from exc
+            raise TidalError(f"Unable to build deploy transaction: {exc}", status_code=502) from exc
 
         return None, tx_data
 
@@ -937,14 +937,14 @@ class FactoryDashboardService:
             if exc.code == 404 and not_found_returns_none:
                 return None
             payload = exc.read().decode("utf-8", errors="ignore")
-            raise FactoryDashboardError(
+            raise TidalError(
                 f"{error_context} failed with HTTP {exc.code}: {payload or exc.reason}",
                 status_code=502,
             ) from exc
         except URLError as exc:
-            raise FactoryDashboardError(f"{error_context} failed: {exc.reason}", status_code=502) from exc
+            raise TidalError(f"{error_context} failed: {exc.reason}", status_code=502) from exc
         except json.JSONDecodeError as exc:
-            raise FactoryDashboardError(f"{error_context} response was not valid JSON", status_code=502) from exc
+            raise TidalError(f"{error_context} response was not valid JSON", status_code=502) from exc
 
     @staticmethod
     def _parse_decimal(value):
@@ -958,14 +958,14 @@ class FactoryDashboardService:
     @staticmethod
     def _normalize_address(address):
         if not address or not Web3.is_address(address):
-            raise FactoryDashboardError("Invalid address", status_code=400)
+            raise TidalError("Invalid address", status_code=400)
         return Web3.to_checksum_address(address)
 
     @staticmethod
     def _optional_normalize_address(address):
         if not address:
             return None
-        return FactoryDashboardService._normalize_address(address)
+        return TidalService._normalize_address(address)
 
     def _group_kicks(self, kick_rows):
         kicks_by_source = {}
@@ -1404,10 +1404,10 @@ class FactoryDashboardService:
     def _translate_sqlite_error(self, exc):
         message = str(exc).lower()
         if "locked" in message or "busy" in message:
-            return FactoryDashboardError("Factory dashboard database is busy", status_code=503)
+            return TidalError("Tidal database is busy", status_code=503)
         if "no such table" in message or "no such column" in message:
-            return FactoryDashboardError("Factory dashboard database schema is missing required tables or columns")
-        return FactoryDashboardError("Factory dashboard query failed")
+            return TidalError("Tidal database schema is missing required tables or columns")
+        return TidalError("Tidal query failed")
 
     @staticmethod
     def _utc_now():

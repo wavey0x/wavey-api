@@ -7,7 +7,7 @@ from database import db
 from config import Config
 from flask_cors import CORS
 from services.gauge_info import GaugeInfoService
-from services.factory_dashboard import FactoryDashboardError, FactoryDashboardService
+from services.tidal import TidalError, TidalService
 from routes import api
 import services.resupply as resupply
 import time
@@ -46,20 +46,20 @@ app.register_blueprint(api, url_prefix='/api')
 
 # Create a single gauge service instance for the app
 gauge_service = GaugeInfoService()
-factory_dashboard_service = FactoryDashboardService(
-    app.config["FACTORY_DASHBOARD_DB_PATH"],
-    app.config["FACTORY_DASHBOARD_BUSY_TIMEOUT_MS"],
-    deploy_chain_id=app.config["FACTORY_DASHBOARD_DEPLOY_CHAIN_ID"],
-    deploy_factory_address=app.config["FACTORY_DASHBOARD_DEPLOY_AUCTION_FACTORY_ADDRESS"],
-    deploy_governance_address=app.config["FACTORY_DASHBOARD_DEPLOY_GOVERNANCE_ADDRESS"],
-    deploy_start_price_buffer_bps=app.config["FACTORY_DASHBOARD_DEPLOY_START_PRICE_BUFFER_BPS"],
-    deploy_require_curve_quote=app.config["FACTORY_DASHBOARD_DEPLOY_REQUIRE_CURVE_QUOTE"],
-    deploy_price_base_url=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_BASE_URL"],
-    deploy_price_api_key=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_API_KEY"],
-    deploy_price_timeout_seconds=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_TIMEOUT_SECONDS"],
-    auctionscan_base_url=app.config["FACTORY_DASHBOARD_AUCTIONSCAN_BASE_URL"],
-    auctionscan_api_base_url=app.config["FACTORY_DASHBOARD_AUCTIONSCAN_API_BASE_URL"],
-    auctionscan_recheck_seconds=app.config["FACTORY_DASHBOARD_AUCTIONSCAN_RECHECK_SECONDS"],
+tidal_service = TidalService(
+    app.config["TIDAL_DB_PATH"],
+    app.config["TIDAL_BUSY_TIMEOUT_MS"],
+    deploy_chain_id=app.config["TIDAL_DEPLOY_CHAIN_ID"],
+    deploy_factory_address=app.config["TIDAL_DEPLOY_AUCTION_FACTORY_ADDRESS"],
+    deploy_governance_address=app.config["TIDAL_DEPLOY_GOVERNANCE_ADDRESS"],
+    deploy_start_price_buffer_bps=app.config["TIDAL_DEPLOY_START_PRICE_BUFFER_BPS"],
+    deploy_require_curve_quote=app.config["TIDAL_DEPLOY_REQUIRE_CURVE_QUOTE"],
+    deploy_price_base_url=app.config["TIDAL_DEPLOY_PRICE_BASE_URL"],
+    deploy_price_api_key=app.config["TIDAL_DEPLOY_PRICE_API_KEY"],
+    deploy_price_timeout_seconds=app.config["TIDAL_DEPLOY_PRICE_TIMEOUT_SECONDS"],
+    auctionscan_base_url=app.config["TIDAL_AUCTIONSCAN_BASE_URL"],
+    auctionscan_api_base_url=app.config["TIDAL_AUCTIONSCAN_API_BASE_URL"],
+    auctionscan_recheck_seconds=app.config["TIDAL_AUCTIONSCAN_RECHECK_SECONDS"],
 )
 
 # Root level endpoint for gauge info - this is what your frontend is calling
@@ -74,74 +74,87 @@ def root():
     return jsonify({"message": "Welcome! Use /?gauge=<address> to get gauge info, or /api for API endpoints."})
 
 
+@app.route('/tidal', methods=['GET'])
 @app.route('/factory-dashboard', methods=['GET'])
-def factory_dashboard():
+@app.route('/api', methods=['GET'])
+@app.route('/api/tidal', methods=['GET'])
+@app.route('/api/factory-dashboard', methods=['GET'])
+def tidal():
     start_time = time.time()
     try:
-        response = jsonify(factory_dashboard_service.get_dashboard())
+        response = jsonify(tidal_service.get_dashboard())
         response.headers["Cache-Control"] = (
-            f'public, max-age={app.config["FACTORY_DASHBOARD_CACHE_MAX_AGE_SECONDS"]}, stale-while-revalidate=300'
+            f'public, max-age={app.config["TIDAL_CACHE_MAX_AGE_SECONDS"]}, stale-while-revalidate=300'
         )
         elapsed = time.time() - start_time
-        logger.info(f"/factory-dashboard route completed in {elapsed:.3f}s")
+        logger.info(f"/tidal route completed in {elapsed:.3f}s")
         return response
-    except FactoryDashboardError as exc:
+    except TidalError as exc:
         elapsed = time.time() - start_time
-        logger.error(f"/factory-dashboard route failed in {elapsed:.3f}s: {exc.message}")
+        logger.error(f"/tidal route failed in {elapsed:.3f}s: {exc.message}")
         return jsonify({"error": exc.message}), exc.status_code
 
 
+@app.route('/tidal/kicks', methods=['GET'])
 @app.route('/factory-dashboard/kicks', methods=['GET'])
-def factory_dashboard_kicks():
+@app.route('/api/kicks', methods=['GET'])
+@app.route('/api/tidal/kicks', methods=['GET'])
+@app.route('/api/factory-dashboard/kicks', methods=['GET'])
+def tidal_kicks():
     start_time = time.time()
     try:
         limit = request.args.get('limit', 100, type=int)
         offset = request.args.get('offset', 0, type=int)
         status = request.args.get('status', None)
-        response = jsonify(factory_dashboard_service.get_kicks(limit, offset, status))
+        response = jsonify(tidal_service.get_kicks(limit, offset, status))
         response.headers["Cache-Control"] = "public, max-age=10, stale-while-revalidate=30"
         elapsed = time.time() - start_time
-        logger.info(f"/factory-dashboard/kicks route completed in {elapsed:.3f}s")
+        logger.info(f"/tidal/kicks route completed in {elapsed:.3f}s")
         return response
-    except FactoryDashboardError as exc:
+    except TidalError as exc:
         elapsed = time.time() - start_time
-        logger.error(f"/factory-dashboard/kicks route failed in {elapsed:.3f}s: {exc.message}")
+        logger.error(f"/tidal/kicks route failed in {elapsed:.3f}s: {exc.message}")
         return jsonify({"error": exc.message}), exc.status_code
 
 
+@app.route('/tidal/kicks/<int:kick_id>/auctionscan', methods=['GET'])
 @app.route('/factory-dashboard/kicks/<int:kick_id>/auctionscan', methods=['GET'])
+@app.route('/api/tidal/kicks/<int:kick_id>/auctionscan', methods=['GET'])
 @app.route('/api/factory-dashboard/kicks/<int:kick_id>/auctionscan', methods=['GET'])
 @app.route('/api/kicks/<int:kick_id>/auctionscan', methods=['GET'])
-def factory_dashboard_kick_auctionscan(kick_id):
+def tidal_kick_auctionscan(kick_id):
     start_time = time.time()
     try:
-        response = jsonify(factory_dashboard_service.resolve_kick_auctionscan(kick_id))
+        response = jsonify(tidal_service.resolve_kick_auctionscan(kick_id))
         response.headers["Cache-Control"] = "no-store"
         elapsed = time.time() - start_time
-        logger.info(f"/factory-dashboard/kicks/<kick_id>/auctionscan route completed in {elapsed:.3f}s")
+        logger.info(f"/tidal/kicks/<kick_id>/auctionscan route completed in {elapsed:.3f}s")
         return response
-    except FactoryDashboardError as exc:
+    except TidalError as exc:
         elapsed = time.time() - start_time
         logger.error(
-            f"/factory-dashboard/kicks/<kick_id>/auctionscan route failed in {elapsed:.3f}s: {exc.message}"
+            f"/tidal/kicks/<kick_id>/auctionscan route failed in {elapsed:.3f}s: {exc.message}"
         )
         return jsonify({"error": exc.message}), exc.status_code
 
 
+@app.route('/tidal/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
 @app.route('/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
+@app.route('/api/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
+@app.route('/api/tidal/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
 @app.route('/api/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
-def factory_dashboard_strategy_deploy_auction_tx(strategy_address):
+def tidal_strategy_deploy_auction_tx(strategy_address):
     start_time = time.time()
     try:
-        response = jsonify(factory_dashboard_service.build_strategy_deploy_tx(strategy_address))
+        response = jsonify(tidal_service.build_strategy_deploy_tx(strategy_address))
         response.headers["Cache-Control"] = "no-store"
         elapsed = time.time() - start_time
-        logger.info(f"/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx route completed in {elapsed:.3f}s")
+        logger.info(f"/tidal/strategies/<strategy_address>/deploy-auction-tx route completed in {elapsed:.3f}s")
         return response
-    except FactoryDashboardError as exc:
+    except TidalError as exc:
         elapsed = time.time() - start_time
         logger.error(
-            f"/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx route failed in {elapsed:.3f}s: {exc.message}"
+            f"/tidal/strategies/<strategy_address>/deploy-auction-tx route failed in {elapsed:.3f}s: {exc.message}"
         )
         return jsonify({"error": exc.message}), exc.status_code
 
