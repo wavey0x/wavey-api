@@ -137,6 +137,9 @@ SELECT
     k.gas_used,
     k.gas_price_gwei,
     k.block_number,
+    {kick_auctionscan_round_id_column} AS auctionscan_round_id,
+    {kick_auctionscan_last_checked_at_column} AS auctionscan_last_checked_at,
+    {kick_auctionscan_matched_at_column} AS auctionscan_matched_at,
     k.error_message,
     k.created_at
 FROM kick_txs k
@@ -243,6 +246,9 @@ class FactoryDashboardService:
         deploy_price_base_url="https://prices.wavey.info",
         deploy_price_api_key=None,
         deploy_price_timeout_seconds=10,
+        auctionscan_base_url="https://auctionscan.info",
+        auctionscan_api_base_url="https://auctionscan.info/api",
+        auctionscan_recheck_seconds=90,
     ):
         self.db_path = db_path
         self.busy_timeout_ms = busy_timeout_ms
@@ -256,6 +262,9 @@ class FactoryDashboardService:
         self.deploy_price_base_url = str(deploy_price_base_url).rstrip("/")
         self.deploy_price_api_key = deploy_price_api_key
         self.deploy_price_timeout_seconds = int(deploy_price_timeout_seconds)
+        self.auctionscan_base_url = str(auctionscan_base_url).rstrip("/")
+        self.auctionscan_api_base_url = str(auctionscan_api_base_url).rstrip("/")
+        self.auctionscan_recheck_seconds = max(int(auctionscan_recheck_seconds), 0)
         self.web3 = setup_web3()
 
     def get_dashboard(self):
@@ -332,12 +341,81 @@ class FactoryDashboardService:
                 "gasUsed": row["gas_used"],
                 "gasPriceGwei": row["gas_price_gwei"],
                 "blockNumber": row["block_number"],
+                "chainId": self.deploy_chain_id,
+                "auctionScanRoundId": row["auctionscan_round_id"],
+                "auctionScanLastCheckedAt": row["auctionscan_last_checked_at"],
+                "auctionScanMatchedAt": row["auctionscan_matched_at"],
+                "auctionScanAuctionUrl": self._build_auctionscan_auction_url(row["auction_address"]),
+                "auctionScanRoundUrl": self._build_auctionscan_round_url(
+                    row["auction_address"],
+                    row["auctionscan_round_id"],
+                ),
                 "errorMessage": row["error_message"],
                 "createdAt": row["created_at"],
             }
             kicks.append(kick)
 
         return {"kicks": kicks, "total": total}
+
+    def resolve_kick_auctionscan(self, kick_id):
+        with self._connect() as conn:
+            self._warn_if_not_wal(conn)
+            schema_features = self._get_schema_features(conn)
+            kick = self._load_kick_auctionscan_context(conn, kick_id, schema_features)
+
+        if kick["auctionscan_round_id"] is not None:
+            return self._build_kick_auctionscan_response(
+                kick,
+                resolved=True,
+                cached=True,
+            )
+
+        if not kick["eligible"]:
+            return self._build_kick_auctionscan_response(
+                kick,
+                resolved=False,
+                cached=False,
+            )
+
+        if self._should_skip_auctionscan_recheck(kick["auctionscan_last_checked_at"]):
+            return self._build_kick_auctionscan_response(
+                kick,
+                resolved=False,
+                cached=False,
+            )
+
+        round_payload = self._lookup_auctionscan_round(
+            auction_address=kick["auction_address"],
+            from_token=kick["token_address"],
+            transaction_hash=kick["tx_hash"],
+        )
+        checked_at = self._utc_now()
+
+        if round_payload and round_payload.get("round_id") is not None:
+            round_id = int(round_payload["round_id"])
+            matched_at = checked_at
+            self._persist_kick_auctionscan_match(
+                kick_id,
+                round_id=round_id,
+                checked_at=checked_at,
+                matched_at=matched_at,
+            )
+            kick["auctionscan_round_id"] = round_id
+            kick["auctionscan_last_checked_at"] = checked_at
+            kick["auctionscan_matched_at"] = matched_at
+            return self._build_kick_auctionscan_response(
+                kick,
+                resolved=True,
+                cached=False,
+            )
+
+        self._persist_kick_auctionscan_check(kick_id, checked_at=checked_at)
+        kick["auctionscan_last_checked_at"] = checked_at
+        return self._build_kick_auctionscan_response(
+            kick,
+            resolved=False,
+            cached=False,
+        )
 
     def build_strategy_deploy_tx(self, strategy_address):
         checksum_strategy = self._normalize_address(strategy_address)
@@ -449,6 +527,30 @@ class FactoryDashboardService:
         finally:
             conn.close()
 
+    @contextmanager
+    def _connect_rw(self):
+        db_path = Path(self.db_path)
+        if not db_path.is_file():
+            raise FactoryDashboardError("Factory dashboard database file is missing or unreadable")
+
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute(f"PRAGMA busy_timeout = {self.busy_timeout_ms}")
+            conn.row_factory = sqlite3.Row
+        except sqlite3.Error as exc:
+            logger.error("Failed to open factory dashboard database for write", exc_info=True)
+            raise self._translate_sqlite_error(exc) from exc
+
+        try:
+            yield conn
+            conn.commit()
+        except sqlite3.Error as exc:
+            conn.rollback()
+            logger.error("Factory dashboard write failed", exc_info=True)
+            raise self._translate_sqlite_error(exc) from exc
+        finally:
+            conn.close()
+
     def _warn_if_not_wal(self, conn):
         if self._journal_mode_checked:
             return
@@ -499,6 +601,62 @@ class FactoryDashboardService:
             )
 
         return context
+
+    def _load_kick_auctionscan_context(self, conn, kick_id, schema_features):
+        if not schema_features["kick_txs"]:
+            raise FactoryDashboardError("Kick history is unavailable", status_code=404)
+
+        round_id_column = "k.auctionscan_round_id" if schema_features["kick_txs.auctionscan_round_id"] else "NULL"
+        last_checked_at_column = (
+            "k.auctionscan_last_checked_at" if schema_features["kick_txs.auctionscan_last_checked_at"] else "NULL"
+        )
+        matched_at_column = "k.auctionscan_matched_at" if schema_features["kick_txs.auctionscan_matched_at"] else "NULL"
+
+        row = conn.execute(
+            f"""
+            SELECT
+                k.id,
+                COALESCE(k.operation_type, 'kick') AS operation_type,
+                k.status,
+                k.tx_hash,
+                k.auction_address,
+                k.token_address,
+                {round_id_column} AS auctionscan_round_id,
+                {last_checked_at_column} AS auctionscan_last_checked_at,
+                {matched_at_column} AS auctionscan_matched_at
+            FROM kick_txs k
+            WHERE k.id = ?
+            """,
+            (kick_id,),
+        ).fetchone()
+        if row is None:
+            raise FactoryDashboardError("Kick not found", status_code=404)
+
+        operation_type = row["operation_type"] or "kick"
+        status = row["status"]
+        auction_address = self._optional_normalize_address(row["auction_address"])
+        token_address = self._optional_normalize_address(row["token_address"])
+        tx_hash = row["tx_hash"]
+        eligible = (
+            operation_type == "kick"
+            and status == "CONFIRMED"
+            and auction_address is not None
+            and token_address is not None
+            and bool(tx_hash)
+        )
+
+        return {
+            "id": row["id"],
+            "operation_type": operation_type,
+            "status": status,
+            "tx_hash": tx_hash,
+            "auction_address": auction_address,
+            "token_address": token_address,
+            "auctionscan_round_id": row["auctionscan_round_id"],
+            "auctionscan_last_checked_at": row["auctionscan_last_checked_at"],
+            "auctionscan_matched_at": row["auctionscan_matched_at"],
+            "eligible": eligible,
+        }
 
     def _select_deploy_balance(self, strategy_context):
         want_address = strategy_context["wantAddress"]
@@ -609,6 +767,33 @@ class FactoryDashboardService:
             "requestUrl": request_url,
         }
 
+    def _lookup_auctionscan_round(self, *, auction_address, from_token, transaction_hash):
+        params = {
+            "chain_id": self.deploy_chain_id,
+            "from_token": self._normalize_address(from_token),
+            "transaction_hash": str(transaction_hash),
+        }
+        request_url = (
+            f"{self.auctionscan_api_base_url}/auctions/"
+            f"{self._normalize_address(auction_address)}/rounds?{urlencode(params)}"
+        )
+        payload = self._http_get_json(
+            request_url,
+            headers={"Accept": "application/json"},
+            timeout_seconds=self.deploy_price_timeout_seconds,
+            error_context="AuctionScan request",
+            not_found_returns_none=True,
+        )
+        if payload is None:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        rounds = payload.get("rounds")
+        if not isinstance(rounds, list) or not rounds:
+            return None
+        first = rounds[0]
+        return first if isinstance(first, dict) else None
+
     def _compute_starting_price(self, amount_out_raw, token_out_decimals):
         parsed_amount = self._parse_decimal(amount_out_raw)
         if parsed_amount is None or parsed_amount <= 0:
@@ -717,21 +902,31 @@ class FactoryDashboardService:
 
         return None, tx_data
 
-    def _http_get_json(self, url, *, headers):
+    def _http_get_json(
+        self,
+        url,
+        *,
+        headers,
+        timeout_seconds=None,
+        error_context="Request",
+        not_found_returns_none=False,
+    ):
         request = Request(url, headers=headers, method="GET")
         try:
-            with urlopen(request, timeout=self.deploy_price_timeout_seconds) as response:
+            with urlopen(request, timeout=timeout_seconds or self.deploy_price_timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
+            if exc.code == 404 and not_found_returns_none:
+                return None
             payload = exc.read().decode("utf-8", errors="ignore")
             raise FactoryDashboardError(
-                f"Quote request failed with HTTP {exc.code}: {payload or exc.reason}",
+                f"{error_context} failed with HTTP {exc.code}: {payload or exc.reason}",
                 status_code=502,
             ) from exc
         except URLError as exc:
-            raise FactoryDashboardError(f"Quote request failed: {exc.reason}", status_code=502) from exc
+            raise FactoryDashboardError(f"{error_context} failed: {exc.reason}", status_code=502) from exc
         except json.JSONDecodeError as exc:
-            raise FactoryDashboardError("Quote response was not valid JSON", status_code=502) from exc
+            raise FactoryDashboardError(f"{error_context} response was not valid JSON", status_code=502) from exc
 
     @staticmethod
     def _parse_decimal(value):
@@ -897,6 +1092,9 @@ class FactoryDashboardService:
             "kick_txs.source_address": self._has_column(conn, "kick_txs", "source_address"),
             "kick_txs.token_symbol": self._has_column(conn, "kick_txs", "token_symbol"),
             "kick_txs.want_symbol": self._has_column(conn, "kick_txs", "want_symbol"),
+            "kick_txs.auctionscan_round_id": self._has_column(conn, "kick_txs", "auctionscan_round_id"),
+            "kick_txs.auctionscan_last_checked_at": self._has_column(conn, "kick_txs", "auctionscan_last_checked_at"),
+            "kick_txs.auctionscan_matched_at": self._has_column(conn, "kick_txs", "auctionscan_matched_at"),
             "fee_burners": self._has_table(conn, "fee_burners"),
             "fee_burners.auction_address": self._has_column(conn, "fee_burners", "auction_address"),
             "fee_burners.auction_version": self._has_column(conn, "fee_burners", "auction_version"),
@@ -995,6 +1193,15 @@ class FactoryDashboardService:
     def _build_kicks_detail_sql(self, schema_features, include_status_filter=False):
         operation_type_expr, source_type_expr, source_address_expr = self._build_kick_source_expressions(schema_features)
         kick_token_symbol_column = "COALESCE(k.token_symbol, t.symbol)" if schema_features["kick_txs.token_symbol"] else "t.symbol"
+        kick_auctionscan_round_id_column = (
+            "k.auctionscan_round_id" if schema_features["kick_txs.auctionscan_round_id"] else "NULL"
+        )
+        kick_auctionscan_last_checked_at_column = (
+            "k.auctionscan_last_checked_at" if schema_features["kick_txs.auctionscan_last_checked_at"] else "NULL"
+        )
+        kick_auctionscan_matched_at_column = (
+            "k.auctionscan_matched_at" if schema_features["kick_txs.auctionscan_matched_at"] else "NULL"
+        )
         if schema_features["kick_txs.want_symbol"]:
             kick_want_symbol_column = "COALESCE(k.want_symbol, wt.symbol)"
         else:
@@ -1018,9 +1225,71 @@ class FactoryDashboardService:
             fee_burner_join=fee_burner_join,
             kick_token_symbol_column=kick_token_symbol_column,
             kick_want_symbol_column=kick_want_symbol_column,
+            kick_auctionscan_round_id_column=kick_auctionscan_round_id_column,
+            kick_auctionscan_last_checked_at_column=kick_auctionscan_last_checked_at_column,
+            kick_auctionscan_matched_at_column=kick_auctionscan_matched_at_column,
             want_token_join=want_token_join,
             status_clause=status_clause,
         )
+
+    def _persist_kick_auctionscan_match(self, kick_id, *, round_id, checked_at, matched_at):
+        with self._connect_rw() as conn:
+            conn.execute(
+                """
+                UPDATE kick_txs
+                SET auctionscan_round_id = ?, auctionscan_last_checked_at = ?, auctionscan_matched_at = ?
+                WHERE id = ?
+                """,
+                (int(round_id), checked_at, matched_at, kick_id),
+            )
+
+    def _persist_kick_auctionscan_check(self, kick_id, *, checked_at):
+        with self._connect_rw() as conn:
+            conn.execute(
+                """
+                UPDATE kick_txs
+                SET auctionscan_last_checked_at = ?
+                WHERE id = ?
+                """,
+                (checked_at, kick_id),
+            )
+
+    def _build_auctionscan_auction_url(self, auction_address):
+        if not auction_address:
+            return None
+        return f"{self.auctionscan_base_url}/auction/{self.deploy_chain_id}/{self._normalize_address(auction_address)}"
+
+    def _build_auctionscan_round_url(self, auction_address, round_id):
+        if not auction_address or round_id is None:
+            return None
+        return (
+            f"{self.auctionscan_base_url}/round/{self.deploy_chain_id}/"
+            f"{self._normalize_address(auction_address)}/{int(round_id)}"
+        )
+
+    def _build_kick_auctionscan_response(self, kick, *, resolved, cached):
+        return {
+            "kickId": kick["id"],
+            "chainId": self.deploy_chain_id,
+            "eligible": bool(kick["eligible"]),
+            "resolved": bool(resolved),
+            "cached": bool(cached),
+            "auctionAddress": kick["auction_address"],
+            "roundId": kick["auctionscan_round_id"],
+            "auctionUrl": self._build_auctionscan_auction_url(kick["auction_address"]),
+            "roundUrl": self._build_auctionscan_round_url(kick["auction_address"], kick["auctionscan_round_id"]),
+            "lastCheckedAt": kick["auctionscan_last_checked_at"],
+            "matchedAt": kick["auctionscan_matched_at"],
+        }
+
+    def _should_skip_auctionscan_recheck(self, last_checked_at):
+        if not last_checked_at or self.auctionscan_recheck_seconds <= 0:
+            return False
+        checked_at = self._parse_timestamp(last_checked_at)
+        if checked_at is None:
+            return False
+        delta = datetime.now(timezone.utc) - checked_at
+        return delta.total_seconds() < self.auctionscan_recheck_seconds
 
     def _translate_sqlite_error(self, exc):
         message = str(exc).lower()
@@ -1033,3 +1302,12 @@ class FactoryDashboardService:
     @staticmethod
     def _utc_now():
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _parse_timestamp(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None

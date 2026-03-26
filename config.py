@@ -72,3 +72,15 @@ class Config:
             'FACTORY_DASHBOARD_DEPLOY_PRICE_TIMEOUT_SECONDS',
             10,
         )
+        self.FACTORY_DASHBOARD_AUCTIONSCAN_BASE_URL = os.getenv(
+            'FACTORY_DASHBOARD_AUCTIONSCAN_BASE_URL',
+            'https://auctionscan.info',
+        )
+        self.FACTORY_DASHBOARD_AUCTIONSCAN_API_BASE_URL = os.getenv(
+            'FACTORY_DASHBOARD_AUCTIONSCAN_API_BASE_URL',
+            'https://auctionscan.info/api',
+        )
+        self.FACTORY_DASHBOARD_AUCTIONSCAN_RECHECK_SECONDS = _get_int_env(
+            'FACTORY_DASHBOARD_AUCTIONSCAN_RECHECK_SECONDS',
+            90,
+        )
