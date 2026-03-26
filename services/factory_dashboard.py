@@ -46,12 +46,18 @@ SELECT
     t.name AS token_name,
     t.price_usd AS token_price_usd,
     {logo_column} AS token_logo_url,
-    stbl.normalized_balance
+    stbl.normalized_balance,
+    {auction_enabled_scan_status_column} AS auction_enabled_scan_status,
+    {auction_enabled_scan_scanned_at_column} AS auction_enabled_scan_scanned_at,
+    {auction_enabled_scan_error_column} AS auction_enabled_scan_error,
+    {auction_token_enabled_column} AS auction_token_enabled
 FROM strategy_token_balances_latest stbl
 JOIN strategies s ON s.address = stbl.strategy_address
 JOIN vaults v ON v.address = s.vault_address
 JOIN tokens t ON t.address = stbl.token_address
 {strategy_want_join}
+{auction_enabled_scan_join}
+{auction_enabled_token_join}
 ORDER BY s.vault_address, stbl.strategy_address, t.symbol
 """
 
@@ -81,11 +87,17 @@ SELECT
     t.name AS token_name,
     t.price_usd AS token_price_usd,
     {logo_column} AS token_logo_url,
-    fbtbl.normalized_balance
+    fbtbl.normalized_balance,
+    {auction_enabled_scan_status_column} AS auction_enabled_scan_status,
+    {auction_enabled_scan_scanned_at_column} AS auction_enabled_scan_scanned_at,
+    {auction_enabled_scan_error_column} AS auction_enabled_scan_error,
+    {auction_token_enabled_column} AS auction_token_enabled
 FROM fee_burner_token_balances_latest fbtbl
 JOIN fee_burners fb ON fb.address = fbtbl.fee_burner_address
 JOIN tokens t ON t.address = fbtbl.token_address
 {fee_burner_want_join}
+{auction_enabled_scan_join}
+{auction_enabled_token_join}
 ORDER BY fbtbl.fee_burner_address, t.symbol
 """
 
@@ -1018,10 +1030,27 @@ class FactoryDashboardService:
                     "normalizedBalance": detail_row["normalized_balance"],
                     "tokenPriceUsd": detail_row["token_price_usd"],
                     "tokenLogoUrl": detail_row["token_logo_url"],
+                    "auctionSellTokenStatus": self._derive_auction_sell_token_status(detail_row),
+                    "auctionSellTokenStatusScannedAt": detail_row["auction_enabled_scan_scanned_at"],
+                    "auctionSellTokenStatusError": detail_row["auction_enabled_scan_error"],
                 }
             )
 
         return rows
+
+    def _derive_auction_sell_token_status(self, detail_row):
+        auction_address = detail_row["auction_address"]
+        token_address = detail_row["token_address"]
+        want_address = detail_row["want_address"]
+        scan_status = detail_row["auction_enabled_scan_status"]
+
+        if not auction_address:
+            return "no_auction"
+        if token_address and want_address and str(token_address).lower() == str(want_address).lower():
+            return "want"
+        if scan_status != "SUCCESS":
+            return "unknown"
+        return "enabled" if detail_row["auction_token_enabled"] else "disabled"
 
     def _build_token_catalog(self, detail_rows):
         tokens_by_address = {}
@@ -1086,6 +1115,8 @@ class FactoryDashboardService:
             "strategies.want_address": self._has_column(conn, "strategies", "want_address"),
             "tokens.logo_url": self._has_column(conn, "tokens", "logo_url"),
             "vaults.deposit_limit": self._has_column(conn, "vaults", "deposit_limit"),
+            "auction_enabled_tokens_latest": self._has_table(conn, "auction_enabled_tokens_latest"),
+            "auction_enabled_token_scans": self._has_table(conn, "auction_enabled_token_scans"),
             "kick_txs": self._has_table(conn, "kick_txs"),
             "kick_txs.operation_type": self._has_column(conn, "kick_txs", "operation_type"),
             "kick_txs.source_type": self._has_column(conn, "kick_txs", "source_type"),
@@ -1127,6 +1158,29 @@ class FactoryDashboardService:
             strategy_want_symbol_column = "NULL"
             strategy_want_join = ""
 
+        if schema_features["auction_enabled_token_scans"] and schema_features["strategies.auction_address"]:
+            auction_enabled_scan_status_column = "aes.status"
+            auction_enabled_scan_scanned_at_column = "aes.scanned_at"
+            auction_enabled_scan_error_column = "aes.error_message"
+            auction_enabled_scan_join = "LEFT JOIN auction_enabled_token_scans aes ON aes.auction_address = s.auction_address"
+        else:
+            auction_enabled_scan_status_column = "NULL"
+            auction_enabled_scan_scanned_at_column = "NULL"
+            auction_enabled_scan_error_column = "NULL"
+            auction_enabled_scan_join = ""
+
+        if schema_features["auction_enabled_tokens_latest"] and schema_features["strategies.auction_address"]:
+            auction_token_enabled_column = "CASE WHEN aet.token_address IS NOT NULL THEN 1 ELSE 0 END"
+            auction_enabled_token_join = (
+                "LEFT JOIN auction_enabled_tokens_latest aet "
+                "ON aet.auction_address = s.auction_address "
+                "AND aet.token_address = stbl.token_address "
+                "AND aet.active = 1"
+            )
+        else:
+            auction_token_enabled_column = "NULL"
+            auction_enabled_token_join = ""
+
         return STRATEGY_DETAIL_ROWS_SQL.format(
             auction_column=auction_column,
             auction_version_column=auction_version_column,
@@ -1135,6 +1189,12 @@ class FactoryDashboardService:
             strategy_want_column=strategy_want_column,
             strategy_want_symbol_column=strategy_want_symbol_column,
             strategy_want_join=strategy_want_join,
+            auction_enabled_scan_status_column=auction_enabled_scan_status_column,
+            auction_enabled_scan_scanned_at_column=auction_enabled_scan_scanned_at_column,
+            auction_enabled_scan_error_column=auction_enabled_scan_error_column,
+            auction_token_enabled_column=auction_token_enabled_column,
+            auction_enabled_scan_join=auction_enabled_scan_join,
+            auction_enabled_token_join=auction_enabled_token_join,
         )
 
     def _build_fee_burner_detail_rows_sql(self, schema_features):
@@ -1153,6 +1213,29 @@ class FactoryDashboardService:
             fee_burner_want_symbol_column = "NULL"
             fee_burner_want_join = ""
 
+        if schema_features["auction_enabled_token_scans"] and schema_features["fee_burners.auction_address"]:
+            auction_enabled_scan_status_column = "aes.status"
+            auction_enabled_scan_scanned_at_column = "aes.scanned_at"
+            auction_enabled_scan_error_column = "aes.error_message"
+            auction_enabled_scan_join = "LEFT JOIN auction_enabled_token_scans aes ON aes.auction_address = fb.auction_address"
+        else:
+            auction_enabled_scan_status_column = "NULL"
+            auction_enabled_scan_scanned_at_column = "NULL"
+            auction_enabled_scan_error_column = "NULL"
+            auction_enabled_scan_join = ""
+
+        if schema_features["auction_enabled_tokens_latest"] and schema_features["fee_burners.auction_address"]:
+            auction_token_enabled_column = "CASE WHEN aet.token_address IS NOT NULL THEN 1 ELSE 0 END"
+            auction_enabled_token_join = (
+                "LEFT JOIN auction_enabled_tokens_latest aet "
+                "ON aet.auction_address = fb.auction_address "
+                "AND aet.token_address = fbtbl.token_address "
+                "AND aet.active = 1"
+            )
+        else:
+            auction_token_enabled_column = "NULL"
+            auction_enabled_token_join = ""
+
         return FEE_BURNER_DETAIL_ROWS_SQL.format(
             fee_burner_auction_column=fee_burner_auction_column,
             fee_burner_auction_version_column=fee_burner_auction_version_column,
@@ -1160,6 +1243,12 @@ class FactoryDashboardService:
             fee_burner_want_symbol_column=fee_burner_want_symbol_column,
             fee_burner_want_join=fee_burner_want_join,
             logo_column=logo_column,
+            auction_enabled_scan_status_column=auction_enabled_scan_status_column,
+            auction_enabled_scan_scanned_at_column=auction_enabled_scan_scanned_at_column,
+            auction_enabled_scan_error_column=auction_enabled_scan_error_column,
+            auction_token_enabled_column=auction_token_enabled_column,
+            auction_enabled_scan_join=auction_enabled_scan_join,
+            auction_enabled_token_join=auction_enabled_token_join,
         )
 
     def _build_kick_source_expressions(self, schema_features):
