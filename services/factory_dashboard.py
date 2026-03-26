@@ -142,6 +142,9 @@ SELECT
     k.min_price_buffer_bps,
     k.quote_amount,
     k.quote_response_json,
+    {kick_step_decay_rate_bps_column} AS step_decay_rate_bps,
+    {kick_settle_token_column} AS settle_token,
+    {kick_stuck_abort_reason_column} AS stuck_abort_reason,
     k.price_usd,
     k.usd_value,
     k.status,
@@ -346,6 +349,9 @@ class FactoryDashboardService:
                 "minPriceBufferBps": row["min_price_buffer_bps"],
                 "quoteAmount": row["quote_amount"],
                 "quoteResponseJson": row["quote_response_json"],
+                "stepDecayRateBps": row["step_decay_rate_bps"],
+                "settleToken": self._optional_normalize_address(row["settle_token"]),
+                "stuckAbortReason": row["stuck_abort_reason"],
                 "priceUsd": row["price_usd"],
                 "usdValue": row["usd_value"],
                 "status": row["status"],
@@ -964,7 +970,7 @@ class FactoryDashboardService:
     def _group_kicks(self, kick_rows):
         kicks_by_source = {}
         for row in kick_rows:
-            if (row["operation_type"] or "kick") == "settle":
+            if (row["operation_type"] or "kick") != "kick":
                 continue
             source_address = row["source_address"] or row["strategy_address"]
             if not source_address:
@@ -1123,6 +1129,9 @@ class FactoryDashboardService:
             "kick_txs.source_address": self._has_column(conn, "kick_txs", "source_address"),
             "kick_txs.token_symbol": self._has_column(conn, "kick_txs", "token_symbol"),
             "kick_txs.want_symbol": self._has_column(conn, "kick_txs", "want_symbol"),
+            "kick_txs.step_decay_rate_bps": self._has_column(conn, "kick_txs", "step_decay_rate_bps"),
+            "kick_txs.settle_token": self._has_column(conn, "kick_txs", "settle_token"),
+            "kick_txs.stuck_abort_reason": self._has_column(conn, "kick_txs", "stuck_abort_reason"),
             "kick_txs.auctionscan_round_id": self._has_column(conn, "kick_txs", "auctionscan_round_id"),
             "kick_txs.auctionscan_last_checked_at": self._has_column(conn, "kick_txs", "auctionscan_last_checked_at"),
             "kick_txs.auctionscan_matched_at": self._has_column(conn, "kick_txs", "auctionscan_matched_at"),
@@ -1291,6 +1300,15 @@ class FactoryDashboardService:
         kick_auctionscan_matched_at_column = (
             "k.auctionscan_matched_at" if schema_features["kick_txs.auctionscan_matched_at"] else "NULL"
         )
+        kick_step_decay_rate_bps_column = (
+            "k.step_decay_rate_bps" if schema_features["kick_txs.step_decay_rate_bps"] else "NULL"
+        )
+        kick_settle_token_column = (
+            "k.settle_token" if schema_features["kick_txs.settle_token"] else "NULL"
+        )
+        kick_stuck_abort_reason_column = (
+            "k.stuck_abort_reason" if schema_features["kick_txs.stuck_abort_reason"] else "NULL"
+        )
         if schema_features["kick_txs.want_symbol"]:
             kick_want_symbol_column = "COALESCE(k.want_symbol, wt.symbol)"
         else:
@@ -1314,6 +1332,9 @@ class FactoryDashboardService:
             fee_burner_join=fee_burner_join,
             kick_token_symbol_column=kick_token_symbol_column,
             kick_want_symbol_column=kick_want_symbol_column,
+            kick_step_decay_rate_bps_column=kick_step_decay_rate_bps_column,
+            kick_settle_token_column=kick_settle_token_column,
+            kick_stuck_abort_reason_column=kick_stuck_abort_reason_column,
             kick_auctionscan_round_id_column=kick_auctionscan_round_id_column,
             kick_auctionscan_last_checked_at_column=kick_auctionscan_last_checked_at_column,
             kick_auctionscan_matched_at_column=kick_auctionscan_matched_at_column,
