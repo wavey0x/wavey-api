@@ -91,6 +91,7 @@ ORDER BY fbtbl.fee_burner_address, t.symbol
 
 KICKS_SQL_TEMPLATE = """
 SELECT
+    {operation_type_expr} AS operation_type,
     {source_type_expr} AS source_type,
     {source_address_expr} AS source_address,
     k.strategy_address,
@@ -110,6 +111,7 @@ KICKS_DETAIL_SQL_TEMPLATE = """
 SELECT
     k.id,
     k.run_id,
+    {operation_type_expr} AS operation_type,
     {source_type_expr} AS source_type,
     {source_address_expr} AS source_address,
     {source_name_column} AS source_name,
@@ -304,6 +306,7 @@ class FactoryDashboardService:
             kick = {
                 "id": row["id"],
                 "runId": row["run_id"],
+                "operationType": row["operation_type"] or "kick",
                 "sourceType": row["source_type"],
                 "sourceAddress": self._optional_normalize_address(row["source_address"]),
                 "sourceName": row["source_name"],
@@ -754,6 +757,8 @@ class FactoryDashboardService:
     def _group_kicks(self, kick_rows):
         kicks_by_source = {}
         for row in kick_rows:
+            if (row["operation_type"] or "kick") == "settle":
+                continue
             source_address = row["source_address"] or row["strategy_address"]
             if not source_address:
                 continue
@@ -887,6 +892,7 @@ class FactoryDashboardService:
             "tokens.logo_url": self._has_column(conn, "tokens", "logo_url"),
             "vaults.deposit_limit": self._has_column(conn, "vaults", "deposit_limit"),
             "kick_txs": self._has_table(conn, "kick_txs"),
+            "kick_txs.operation_type": self._has_column(conn, "kick_txs", "operation_type"),
             "kick_txs.source_type": self._has_column(conn, "kick_txs", "source_type"),
             "kick_txs.source_address": self._has_column(conn, "kick_txs", "source_address"),
             "kick_txs.token_symbol": self._has_column(conn, "kick_txs", "token_symbol"),
@@ -959,6 +965,11 @@ class FactoryDashboardService:
         )
 
     def _build_kick_source_expressions(self, schema_features):
+        if schema_features["kick_txs.operation_type"]:
+            operation_type_expr = "COALESCE(k.operation_type, 'kick')"
+        else:
+            operation_type_expr = "'kick'"
+
         if schema_features["kick_txs.source_type"]:
             source_type_expr = "COALESCE(k.source_type, CASE WHEN k.strategy_address IS NOT NULL THEN 'strategy' END)"
         else:
@@ -969,19 +980,20 @@ class FactoryDashboardService:
         else:
             source_address_expr = "k.strategy_address"
 
-        return source_type_expr, source_address_expr
+        return operation_type_expr, source_type_expr, source_address_expr
 
     def _build_kicks_sql(self, schema_features):
-        source_type_expr, source_address_expr = self._build_kick_source_expressions(schema_features)
+        operation_type_expr, source_type_expr, source_address_expr = self._build_kick_source_expressions(schema_features)
         kick_token_symbol_column = "COALESCE(k.token_symbol, t.symbol)" if schema_features["kick_txs.token_symbol"] else "t.symbol"
         return KICKS_SQL_TEMPLATE.format(
+            operation_type_expr=operation_type_expr,
             source_type_expr=source_type_expr,
             source_address_expr=source_address_expr,
             kick_token_symbol_column=kick_token_symbol_column,
         )
 
     def _build_kicks_detail_sql(self, schema_features, include_status_filter=False):
-        source_type_expr, source_address_expr = self._build_kick_source_expressions(schema_features)
+        operation_type_expr, source_type_expr, source_address_expr = self._build_kick_source_expressions(schema_features)
         kick_token_symbol_column = "COALESCE(k.token_symbol, t.symbol)" if schema_features["kick_txs.token_symbol"] else "t.symbol"
         if schema_features["kick_txs.want_symbol"]:
             kick_want_symbol_column = "COALESCE(k.want_symbol, wt.symbol)"
@@ -999,6 +1011,7 @@ class FactoryDashboardService:
         status_clause = "WHERE k.status = ?" if include_status_filter else ""
 
         return KICKS_DETAIL_SQL_TEMPLATE.format(
+            operation_type_expr=operation_type_expr,
             source_type_expr=source_type_expr,
             source_address_expr=source_address_expr,
             source_name_column=source_name_column,
