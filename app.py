@@ -49,6 +49,14 @@ gauge_service = GaugeInfoService()
 factory_dashboard_service = FactoryDashboardService(
     app.config["FACTORY_DASHBOARD_DB_PATH"],
     app.config["FACTORY_DASHBOARD_BUSY_TIMEOUT_MS"],
+    deploy_chain_id=app.config["FACTORY_DASHBOARD_DEPLOY_CHAIN_ID"],
+    deploy_factory_address=app.config["FACTORY_DASHBOARD_DEPLOY_AUCTION_FACTORY_ADDRESS"],
+    deploy_governance_address=app.config["FACTORY_DASHBOARD_DEPLOY_GOVERNANCE_ADDRESS"],
+    deploy_start_price_buffer_bps=app.config["FACTORY_DASHBOARD_DEPLOY_START_PRICE_BUFFER_BPS"],
+    deploy_require_curve_quote=app.config["FACTORY_DASHBOARD_DEPLOY_REQUIRE_CURVE_QUOTE"],
+    deploy_price_base_url=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_BASE_URL"],
+    deploy_price_api_key=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_API_KEY"],
+    deploy_price_timeout_seconds=app.config["FACTORY_DASHBOARD_DEPLOY_PRICE_TIMEOUT_SECONDS"],
 )
 
 # Root level endpoint for gauge info - this is what your frontend is calling
@@ -95,6 +103,24 @@ def factory_dashboard_kicks():
     except FactoryDashboardError as exc:
         elapsed = time.time() - start_time
         logger.error(f"/factory-dashboard/kicks route failed in {elapsed:.3f}s: {exc.message}")
+        return jsonify({"error": exc.message}), exc.status_code
+
+
+@app.route('/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
+@app.route('/api/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx', methods=['POST'])
+def factory_dashboard_strategy_deploy_auction_tx(strategy_address):
+    start_time = time.time()
+    try:
+        response = jsonify(factory_dashboard_service.build_strategy_deploy_tx(strategy_address))
+        response.headers["Cache-Control"] = "no-store"
+        elapsed = time.time() - start_time
+        logger.info(f"/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx route completed in {elapsed:.3f}s")
+        return response
+    except FactoryDashboardError as exc:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"/factory-dashboard/strategies/<strategy_address>/deploy-auction-tx route failed in {elapsed:.3f}s: {exc.message}"
+        )
         return jsonify({"error": exc.message}), exc.status_code
 
 

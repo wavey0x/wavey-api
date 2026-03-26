@@ -1,10 +1,21 @@
 import logging
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from pathlib import Path
 from threading import Lock
-from urllib.parse import quote
+import time
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
+
+from web3 import Web3
+from hexbytes import HexBytes
+
+from services.multicall import batch_calls
+from services.web3_services import setup_web3
 
 
 logger = logging.getLogger(__name__)
@@ -139,6 +150,75 @@ LIMIT ? OFFSET ?
 KICKS_COUNT_SQL = "SELECT COUNT(*) AS total FROM kick_txs"
 KICKS_COUNT_FILTERED_SQL = "SELECT COUNT(*) AS total FROM kick_txs WHERE status = ?"
 
+STRATEGY_DEPLOY_CONTEXT_SQL = """
+SELECT
+    s.address AS strategy_address,
+    s.name AS strategy_name,
+    s.auction_address AS auction_address,
+    s.want_address AS want_address,
+    wt.symbol AS want_symbol,
+    s.active AS active,
+    stbl.token_address AS token_address,
+    stbl.raw_balance AS raw_balance,
+    stbl.normalized_balance AS normalized_balance,
+    t.symbol AS token_symbol,
+    t.decimals AS token_decimals,
+    t.price_usd AS token_price_usd
+FROM strategies s
+LEFT JOIN tokens wt ON wt.address = s.want_address
+LEFT JOIN strategy_token_balances_latest stbl ON stbl.strategy_address = s.address
+LEFT JOIN tokens t ON t.address = stbl.token_address
+WHERE s.address = ?
+ORDER BY t.symbol, stbl.token_address
+"""
+
+SINGLE_AUCTION_FACTORY_ABI = [
+    {
+        "inputs": [],
+        "name": "getAllAuctions",
+        "outputs": [{"internalType": "address[]", "name": "", "type": "address[]"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "_want", "type": "address"},
+            {"internalType": "address", "name": "_receiver", "type": "address"},
+            {"internalType": "address", "name": "_governance", "type": "address"},
+            {"internalType": "uint256", "name": "_startingPrice", "type": "uint256"},
+            {"internalType": "bytes32", "name": "_salt", "type": "bytes32"},
+        ],
+        "name": "createNewAuction",
+        "outputs": [{"internalType": "address", "name": "newAuction", "type": "address"}],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+]
+
+AUCTION_IDENTITY_ABI = [
+    {
+        "inputs": [],
+        "name": "governance",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "receiver",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "want",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+]
+
 
 class FactoryDashboardError(Exception):
     def __init__(self, message, status_code=500):
@@ -148,11 +228,33 @@ class FactoryDashboardError(Exception):
 
 
 class FactoryDashboardService:
-    def __init__(self, db_path, busy_timeout_ms):
+    def __init__(
+        self,
+        db_path,
+        busy_timeout_ms,
+        *,
+        deploy_chain_id=1,
+        deploy_factory_address="0xbA7FCb508c7195eE5AE823F37eE2c11D7ED52F8e",
+        deploy_governance_address="0xb634316E06cC0B358437CbadD4dC94F1D3a92B3b",
+        deploy_start_price_buffer_bps=1000,
+        deploy_require_curve_quote=True,
+        deploy_price_base_url="https://prices.wavey.info",
+        deploy_price_api_key=None,
+        deploy_price_timeout_seconds=10,
+    ):
         self.db_path = db_path
         self.busy_timeout_ms = busy_timeout_ms
         self._journal_mode_checked = False
         self._journal_mode_lock = Lock()
+        self.deploy_chain_id = int(deploy_chain_id)
+        self.deploy_factory_address = self._normalize_address(deploy_factory_address)
+        self.deploy_governance_address = self._normalize_address(deploy_governance_address)
+        self.deploy_start_price_buffer_bps = int(deploy_start_price_buffer_bps)
+        self.deploy_require_curve_quote = bool(deploy_require_curve_quote)
+        self.deploy_price_base_url = str(deploy_price_base_url).rstrip("/")
+        self.deploy_price_api_key = deploy_price_api_key
+        self.deploy_price_timeout_seconds = int(deploy_price_timeout_seconds)
+        self.web3 = setup_web3()
 
     def get_dashboard(self):
         with self._connect() as conn:
@@ -234,6 +336,91 @@ class FactoryDashboardService:
 
         return {"kicks": kicks, "total": total}
 
+    def build_strategy_deploy_tx(self, strategy_address):
+        checksum_strategy = self._normalize_address(strategy_address)
+        strategy_key = checksum_strategy.lower()
+
+        with self._connect() as conn:
+            self._warn_if_not_wal(conn)
+            strategy_context = self._load_strategy_deploy_context(conn, strategy_key)
+
+        if strategy_context["auctionAddress"]:
+            raise FactoryDashboardError("Strategy already has an auction mapped", status_code=409)
+        if not strategy_context["wantAddress"]:
+            raise FactoryDashboardError("Strategy is missing want token metadata", status_code=409)
+
+        balance = self._select_deploy_balance(strategy_context)
+        quote = self._quote_token(
+            token_in=balance["tokenAddress"],
+            token_out=strategy_context["wantAddress"],
+            amount_in=balance["rawBalance"],
+        )
+        starting_price = self._compute_starting_price(
+            quote["amountOutRaw"],
+            quote["tokenOutDecimals"],
+        )
+
+        if self.deploy_require_curve_quote and quote["providerAmounts"].get("curve", 0) <= 0:
+            curve_status = quote["providerStatuses"].get("curve", "not present")
+            raise FactoryDashboardError(
+                f"Curve quote unavailable for deploy inference (status: {curve_status})",
+                status_code=409,
+            )
+
+        matching_auctions = self._find_matching_auctions(
+            want_address=strategy_context["wantAddress"],
+            receiver_address=checksum_strategy,
+            governance_address=self.deploy_governance_address,
+        )
+        if matching_auctions:
+            raise FactoryDashboardError(
+                f"Matching auction already exists in target factory: {matching_auctions[0]}",
+                status_code=409,
+            )
+
+        salt = self._build_deploy_salt(
+            strategy_address=checksum_strategy,
+            want_address=strategy_context["wantAddress"],
+        )
+        predicted_address, tx_data = self._build_create_auction_tx(
+            want_address=strategy_context["wantAddress"],
+            receiver_address=checksum_strategy,
+            governance_address=self.deploy_governance_address,
+            starting_price=starting_price,
+            salt=salt,
+        )
+
+        return {
+            "strategyAddress": checksum_strategy,
+            "strategyName": strategy_context["strategyName"],
+            "factoryAddress": self.deploy_factory_address,
+            "governanceAddress": self.deploy_governance_address,
+            "receiverAddress": checksum_strategy,
+            "wantAddress": strategy_context["wantAddress"],
+            "wantSymbol": strategy_context["wantSymbol"],
+            "startingPrice": str(starting_price),
+            "startPriceBufferBps": self.deploy_start_price_buffer_bps,
+            "predictedAuctionAddress": predicted_address,
+            "salt": salt,
+            "inference": {
+                "sellTokenAddress": balance["tokenAddress"],
+                "sellTokenSymbol": balance["tokenSymbol"],
+                "rawBalance": balance["rawBalance"],
+                "normalizedBalance": balance["normalizedBalance"],
+                "priceUsd": balance["priceUsd"],
+                "usdValue": balance["usdValue"],
+                "quoteAmountOutRaw": str(quote["amountOutRaw"]),
+                "quoteRequestUrl": quote["requestUrl"],
+                "providerStatuses": quote["providerStatuses"],
+            },
+            "txRequest": {
+                "to": self.deploy_factory_address,
+                "data": tx_data,
+                "value": "0x0",
+                "chainId": self.deploy_chain_id,
+            },
+        }
+
     @contextmanager
     def _connect(self):
         db_path = Path(self.db_path)
@@ -276,6 +463,293 @@ class FactoryDashboardService:
                 logger.warning("Unable to verify factory dashboard SQLite journal mode", exc_info=True)
             finally:
                 self._journal_mode_checked = True
+
+    def _load_strategy_deploy_context(self, conn, strategy_address):
+        rows = conn.execute(STRATEGY_DEPLOY_CONTEXT_SQL, (strategy_address,)).fetchall()
+        if not rows:
+            raise FactoryDashboardError("Strategy not found", status_code=404)
+
+        first = rows[0]
+        context = {
+            "strategyAddress": self._normalize_address(first["strategy_address"]),
+            "strategyName": first["strategy_name"],
+            "auctionAddress": self._optional_normalize_address(first["auction_address"]),
+            "wantAddress": self._optional_normalize_address(first["want_address"]),
+            "wantSymbol": first["want_symbol"],
+            "active": bool(first["active"]) if first["active"] is not None else None,
+            "balances": [],
+        }
+
+        for row in rows:
+            token_address = row["token_address"]
+            if not token_address:
+                continue
+            context["balances"].append(
+                {
+                    "tokenAddress": self._normalize_address(token_address),
+                    "rawBalance": row["raw_balance"],
+                    "normalizedBalance": row["normalized_balance"],
+                    "tokenSymbol": row["token_symbol"],
+                    "tokenDecimals": row["token_decimals"],
+                    "priceUsd": row["token_price_usd"],
+                }
+            )
+
+        return context
+
+    def _select_deploy_balance(self, strategy_context):
+        want_address = strategy_context["wantAddress"]
+        candidates = []
+
+        for balance in strategy_context["balances"]:
+            token_address = balance["tokenAddress"]
+            if token_address.lower() == want_address.lower():
+                continue
+
+            raw_balance = self._parse_decimal(balance["rawBalance"])
+            normalized_balance = self._parse_decimal(balance["normalizedBalance"])
+            price_usd = self._parse_decimal(balance["priceUsd"])
+            if raw_balance is None or normalized_balance is None or price_usd is None:
+                continue
+            if raw_balance <= 0 or normalized_balance <= 0 or price_usd <= 0:
+                continue
+
+            usd_value = normalized_balance * price_usd
+            candidates.append(
+                {
+                    **balance,
+                    "usdValue": str(usd_value),
+                }
+            )
+
+        candidates.sort(
+            key=lambda item: (
+                -Decimal(item["usdValue"]),
+                item["tokenAddress"].lower(),
+            )
+        )
+
+        if not candidates:
+            raise FactoryDashboardError(
+                "No eligible priced non-want token balance is available to infer deploy starting price",
+                status_code=409,
+            )
+
+        return candidates[0]
+
+    def _quote_token(self, *, token_in, token_out, amount_in):
+        params = {
+            "token_in": self._normalize_address(token_in),
+            "token_out": self._normalize_address(token_out),
+            "amount_in": str(amount_in),
+            "chain_id": self.deploy_chain_id,
+            "use_underlying": "true",
+        }
+        query_string = urlencode(params)
+        request_url = f"{self.deploy_price_base_url}/v1/quote?{query_string}"
+        headers = {"Accept": "application/json"}
+        if self.deploy_price_api_key:
+            headers["Authorization"] = f"Bearer {self.deploy_price_api_key}"
+
+        last_result = None
+        for attempt in range(2):
+            payload = self._http_get_json(request_url, headers=headers)
+            result = self._parse_quote_response(payload, request_url)
+            last_result = result
+            if result["amountOutRaw"] is not None:
+                return result
+            if attempt == 0 and result["providerStatuses"]:
+                time.sleep(2.0)
+
+        if last_result is None or last_result["amountOutRaw"] is None:
+            raise FactoryDashboardError("No quote available to infer deploy starting price", status_code=409)
+        return last_result
+
+    def _parse_quote_response(self, payload, request_url):
+        amount_out_raw = None
+        token_out_decimals = None
+        provider_statuses = {}
+        provider_amounts = {}
+
+        if isinstance(payload, dict):
+            summary = payload.get("summary")
+            if isinstance(summary, dict):
+                high_amount_out = summary.get("high_amount_out")
+                parsed = self._parse_decimal(high_amount_out)
+                if parsed is not None:
+                    amount_out_raw = int(parsed)
+
+            token_out_data = payload.get("token_out")
+            if isinstance(token_out_data, dict):
+                raw_decimals = token_out_data.get("decimals")
+                if raw_decimals is not None:
+                    try:
+                        token_out_decimals = int(raw_decimals)
+                    except (TypeError, ValueError):
+                        token_out_decimals = None
+
+            providers = payload.get("providers")
+            if isinstance(providers, dict):
+                for name, entry in providers.items():
+                    if not isinstance(entry, dict):
+                        continue
+                    provider_statuses[name] = entry.get("status")
+                    parsed_amount = self._parse_decimal(entry.get("amount_out"))
+                    if parsed_amount is not None:
+                        provider_amounts[name] = int(parsed_amount)
+
+        return {
+            "amountOutRaw": amount_out_raw,
+            "tokenOutDecimals": token_out_decimals,
+            "providerStatuses": provider_statuses,
+            "providerAmounts": provider_amounts,
+            "requestUrl": request_url,
+        }
+
+    def _compute_starting_price(self, amount_out_raw, token_out_decimals):
+        parsed_amount = self._parse_decimal(amount_out_raw)
+        if parsed_amount is None or parsed_amount <= 0:
+            raise FactoryDashboardError("Quote amount is missing or zero", status_code=409)
+        if token_out_decimals is None:
+            raise FactoryDashboardError("Quote response is missing output token decimals", status_code=502)
+
+        normalized = parsed_amount / (Decimal(10) ** int(token_out_decimals))
+        buffer = Decimal(1) + Decimal(self.deploy_start_price_buffer_bps) / Decimal(10_000)
+        starting_price = int((normalized * buffer).to_integral_value(rounding=ROUND_CEILING))
+        if starting_price <= 0:
+            raise FactoryDashboardError("Computed starting price is zero", status_code=409)
+        return starting_price
+
+    def _find_matching_auctions(self, *, want_address, receiver_address, governance_address):
+        try:
+            factory = self.web3.eth.contract(
+                address=self.web3.to_checksum_address(self.deploy_factory_address),
+                abi=SINGLE_AUCTION_FACTORY_ABI,
+            )
+            auction_addresses = factory.functions.getAllAuctions().call()
+        except Exception as exc:
+            raise FactoryDashboardError(f"Unable to read target auction factory: {exc}", status_code=502) from exc
+
+        want_key = want_address.lower()
+        receiver_key = receiver_address.lower()
+        governance_key = governance_address.lower()
+        matches = []
+
+        try:
+            calls = []
+            keys = []
+            for auction_address in auction_addresses:
+                normalized_auction = self._normalize_address(auction_address)
+                for field_name in ("want", "receiver", "governance"):
+                    calls.append((normalized_auction, field_name, []))
+                    keys.append((normalized_auction, field_name))
+
+            results = batch_calls(self.web3, calls, abi=AUCTION_IDENTITY_ABI)
+            metadata = {}
+            for key, result in zip(keys, results):
+                auction_address, field_name = key
+                if result is None:
+                    continue
+                metadata.setdefault(auction_address, {})[field_name] = self._normalize_address(result).lower()
+
+            for auction_address, fields in metadata.items():
+                if (
+                    fields.get("want") == want_key
+                    and fields.get("receiver") == receiver_key
+                    and fields.get("governance") == governance_key
+                ):
+                    matches.append(auction_address)
+        except Exception:
+            for auction_address in auction_addresses:
+                try:
+                    auction = self.web3.eth.contract(
+                        address=self.web3.to_checksum_address(auction_address),
+                        abi=AUCTION_IDENTITY_ABI,
+                    )
+                    want = self._normalize_address(auction.functions.want().call()).lower()
+                    receiver = self._normalize_address(auction.functions.receiver().call()).lower()
+                    governance = self._normalize_address(auction.functions.governance().call()).lower()
+                except Exception:
+                    continue
+
+                if want == want_key and receiver == receiver_key and governance == governance_key:
+                    matches.append(self._normalize_address(auction_address))
+
+        return matches
+
+    def _build_deploy_salt(self, *, strategy_address, want_address):
+        payload = (
+            f"factory-dashboard.deploy.v1:"
+            f"{self.deploy_factory_address.lower()}:"
+            f"{strategy_address.lower()}:"
+            f"{want_address.lower()}:"
+            f"{self.deploy_governance_address.lower()}"
+        )
+        return Web3.keccak(text=payload).hex()
+
+    def _build_create_auction_tx(
+        self,
+        *,
+        want_address,
+        receiver_address,
+        governance_address,
+        starting_price,
+        salt,
+    ):
+        try:
+            factory = self.web3.eth.contract(
+                address=self.web3.to_checksum_address(self.deploy_factory_address),
+                abi=SINGLE_AUCTION_FACTORY_ABI,
+            )
+            create_fn = factory.functions.createNewAuction(
+                self.web3.to_checksum_address(want_address),
+                self.web3.to_checksum_address(receiver_address),
+                self.web3.to_checksum_address(governance_address),
+                int(starting_price),
+                HexBytes(salt),
+            )
+            tx_data = create_fn._encode_transaction_data()
+        except Exception as exc:
+            raise FactoryDashboardError(f"Unable to build deploy transaction: {exc}", status_code=502) from exc
+
+        return None, tx_data
+
+    def _http_get_json(self, url, *, headers):
+        request = Request(url, headers=headers, method="GET")
+        try:
+            with urlopen(request, timeout=self.deploy_price_timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            payload = exc.read().decode("utf-8", errors="ignore")
+            raise FactoryDashboardError(
+                f"Quote request failed with HTTP {exc.code}: {payload or exc.reason}",
+                status_code=502,
+            ) from exc
+        except URLError as exc:
+            raise FactoryDashboardError(f"Quote request failed: {exc.reason}", status_code=502) from exc
+        except json.JSONDecodeError as exc:
+            raise FactoryDashboardError("Quote response was not valid JSON", status_code=502) from exc
+
+    @staticmethod
+    def _parse_decimal(value):
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _normalize_address(address):
+        if not address or not Web3.is_address(address):
+            raise FactoryDashboardError("Invalid address", status_code=400)
+        return Web3.to_checksum_address(address)
+
+    @staticmethod
+    def _optional_normalize_address(address):
+        if not address:
+            return None
+        return FactoryDashboardService._normalize_address(address)
 
     def _group_kicks(self, kick_rows):
         kicks_by_source = {}
