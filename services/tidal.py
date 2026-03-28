@@ -257,7 +257,7 @@ class TidalService:
         deploy_factory_address="0xbA7FCb508c7195eE5AE823F37eE2c11D7ED52F8e",
         deploy_governance_address="0xb634316E06cC0B358437CbadD4dC94F1D3a92B3b",
         deploy_start_price_buffer_bps=1000,
-        deploy_require_curve_quote=True,
+        deploy_require_curve_quote=False,
         deploy_price_base_url="https://prices.wavey.info",
         deploy_price_api_key=None,
         deploy_price_timeout_seconds=10,
@@ -458,13 +458,15 @@ class TidalService:
             quote["amountOutRaw"],
             quote["tokenOutDecimals"],
         )
+        curve_quote_available = quote["providerAmounts"].get("curve", 0) > 0
+        curve_status = quote["providerStatuses"].get("curve") or ("ok" if curve_quote_available else "not present")
+        warnings = []
 
-        if self.deploy_require_curve_quote and quote["providerAmounts"].get("curve", 0) <= 0:
-            curve_status = quote["providerStatuses"].get("curve", "not present")
-            raise TidalError(
-                f"Curve quote unavailable for deploy inference (status: {curve_status})",
-                status_code=409,
-            )
+        if not curve_quote_available:
+            curve_warning = f"Curve quote unavailable for deploy inference (status: {curve_status})"
+            if self.deploy_require_curve_quote:
+                raise TidalError(curve_warning, status_code=409)
+            warnings.append(curve_warning)
 
         matching_auctions = self._find_matching_auctions(
             want_address=strategy_context["wantAddress"],
@@ -510,8 +512,11 @@ class TidalService:
                 "usdValue": balance["usdValue"],
                 "quoteAmountOutRaw": str(quote["amountOutRaw"]),
                 "quoteRequestUrl": quote["requestUrl"],
+                "curveQuoteAvailable": curve_quote_available,
+                "curveQuoteStatus": curve_status,
                 "providerStatuses": quote["providerStatuses"],
             },
+            "warnings": warnings,
             "txRequest": {
                 "to": self.deploy_factory_address,
                 "data": tx_data,

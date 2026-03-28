@@ -105,7 +105,7 @@ class Config:
         self.TIDAL_DEPLOY_REQUIRE_CURVE_QUOTE = _get_bool_env_alias(
             'TIDAL_DEPLOY_REQUIRE_CURVE_QUOTE',
             'FACTORY_DASHBOARD_DEPLOY_REQUIRE_CURVE_QUOTE',
-            True,
+            False,
         )
         self.TIDAL_DEPLOY_PRICE_BASE_URL = os.getenv(
             'TIDAL_DEPLOY_PRICE_BASE_URL',
