@@ -62,6 +62,10 @@ def ll_info():
 def get_treasury_balance_sheet():
     return crvlol.get_treasury_balance_sheet()
 
+@api.route('/crvlol/token-logos/<int:chain_id>/<path:filename>')
+def get_token_logo(chain_id, filename):
+    return crvlol.get_token_logo(chain_id, filename)
+
 @api.route('/crvlol/charts/<chart_name>/<peg>')
 def get_chart(chart_name, peg):
     return crvlol.get_chart(chart_name, peg)
