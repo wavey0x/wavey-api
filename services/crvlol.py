@@ -9,6 +9,19 @@ from .abis.validator_abi import VALIDATOR_ABI
 
 load_dotenv()
 
+
+def _get_ll_info_path():
+    filepath = os.getenv('HOME_DIRECTORY')
+    return f'{filepath}/curve-ll-charts/data/ll_info.json'
+
+
+def _load_ll_info():
+    filepath = _get_ll_info_path()
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(filepath)
+    with open(filepath) as file:
+        return json.load(file)
+
 def get_harvests():
     # Get query parameters for pagination
     page = request.args.get('page', 1, type=int)
@@ -48,21 +61,31 @@ def get_harvests():
 
 
 def ll_info():
-    filepath = os.getenv('HOME_DIRECTORY')
-    filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
-
-    files = glob.glob(filepath)
-    if not files:
+    filepath = _get_ll_info_path()
+    if not glob.glob(filepath):
         return "File not found", 404
     try:
-        # Open the JSON file and load its contents
-        with open(filepath) as file:
-            data = json.load(file)
-        del data['curve_gauge_data']
-        del data['curve_gauges_by_name']
+        data = _load_ll_info()
+        data.pop('curve_gauge_data', None)
+        data.pop('curve_gauges_by_name', None)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def get_treasury_balance_sheet():
+    try:
+        data = _load_ll_info()
+    except FileNotFoundError:
+        return jsonify({"error": "ll_info file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    treasury_balance_sheet = data.get('treasury_balance_sheet')
+    if not treasury_balance_sheet:
+        return jsonify({"error": "treasury_balance_sheet not found in ll_info.json"}), 404
+
+    return jsonify(treasury_balance_sheet)
     
 # Serve the most recent chart JSON
 def get_chart(chart_name, peg):

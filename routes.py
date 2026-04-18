@@ -58,6 +58,10 @@ def get_harvests():
 def ll_info():
     return crvlol.ll_info()
 
+@api.route('/crvlol/treasury_balance_sheet')
+def get_treasury_balance_sheet():
+    return crvlol.get_treasury_balance_sheet()
+
 @api.route('/crvlol/charts/<chart_name>/<peg>')
 def get_chart(chart_name, peg):
     return crvlol.get_chart(chart_name, peg)
