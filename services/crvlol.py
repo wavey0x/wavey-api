@@ -21,12 +21,6 @@ def _load_ll_info():
         raise FileNotFoundError(filepath)
     with open(filepath) as file:
         return json.load(file)
-
-
-def _get_token_logo_cache_dir(chain_id):
-    filepath = os.getenv('HOME_DIRECTORY')
-    return f'{filepath}/curve-ll-charts/cache/token-logos/{chain_id}'
-
 def get_harvests():
     # Get query parameters for pagination
     page = request.args.get('page', 1, type=int)
@@ -91,20 +85,6 @@ def get_treasury_balance_sheet():
         return jsonify({"error": "treasury_balance_sheet not found in ll_info.json"}), 404
 
     return jsonify(treasury_balance_sheet)
-
-
-def get_token_logo(chain_id, filename):
-    directory = _get_token_logo_cache_dir(chain_id)
-
-    if not os.path.isdir(directory):
-        return jsonify({"error": "token logo cache directory not found"}), 404
-
-    file_path = os.path.join(directory, filename)
-    if not os.path.isfile(file_path):
-        return jsonify({"error": "token logo not found"}), 404
-
-    return send_from_directory(directory, filename)
-    
 # Serve the most recent chart JSON
 def get_chart(chart_name, peg):
     peg_str = 'True' if peg.lower() == 'true' else 'False'
