@@ -5,7 +5,10 @@ from flask import Flask, jsonify
 
 from services.gists.auth import create_api_key, rotate_api_key, verify_api_key
 from services.gists.db import gist_connection, init_gist_database
-from services.gists.markdown import render_markdown, render_version
+from services.gists.markdown import (
+    render_markdown_result,
+    render_version,
+)
 from services.gists.routes import gists_api
 from services.gists.service import rerender_gists
 
@@ -58,7 +61,8 @@ def create_gist(client, key, markdown="# Hello", title="Title"):
 
 def test_markdown_rendering_uses_gfm_highlighting_links_and_sanitizer():
     markdown = (FIXTURE_DIR / "github_like_gist.md").read_text(encoding="utf-8")
-    html = render_markdown(markdown)
+    result = render_markdown_result(markdown)
+    html = result.html
 
     assert "<table>" in html
     assert html.count("<table>") == 2
@@ -96,6 +100,15 @@ def test_markdown_rendering_uses_gfm_highlighting_links_and_sanitizer():
     assert "cmarkgfm/" in render_version()
     assert "starry-night/" in render_version()
     assert "syntax-css/" in render_version()
+    assert "highlight/ok" in result.version
+
+
+def test_markdown_rendering_marks_degraded_when_node_is_missing(monkeypatch):
+    monkeypatch.setenv("GIST_NODE_BIN", "/does/not/exist/node")
+    result = render_markdown_result("```python\nprint('hi')\n```")
+
+    assert '<code class="language-python">print(\'hi\')\n</code>' in result.html
+    assert "highlight/degraded" in result.version
 
 
 def test_rerender_gists_updates_current_rows_and_revisions(client, app):
@@ -160,8 +173,10 @@ def test_rerender_gists_updates_current_rows_and_revisions(client, app):
 
     assert "highlight highlight-source-python" in row["rendered_html"]
     assert "cmarkgfm/" in row["render_version"]
+    assert "highlight/ok" in row["render_version"]
     assert "highlight highlight-source-python" in revision["rendered_html"]
     assert "cmarkgfm/" in revision["render_version"]
+    assert "highlight/ok" in revision["render_version"]
 
 
 def test_create_public_render_raw_read_patch_and_delete(client, app):

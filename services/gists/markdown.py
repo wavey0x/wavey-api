@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -23,6 +25,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HIGHLIGHT_TIMEOUT_SECONDS = float(os.getenv("GIST_HIGHLIGHT_TIMEOUT_SECONDS", "8"))
 MAX_HIGHLIGHT_BLOCK_BYTES = int(
     os.getenv("GIST_MAX_HIGHLIGHT_BLOCK_BYTES", str(200 * 1024))
+)
+DEFAULT_NODE_BIN_CANDIDATES = (
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+    "/opt/nodejs/current/bin/node",
 )
 
 SCRIPTABLE_TAGS = {"script", "style", "svg", "math", "iframe"}
@@ -75,6 +82,26 @@ SAFE_CLASS_PATTERNS = (
 )
 
 
+@dataclass(frozen=True)
+class RenderedMarkdown:
+    html: str
+    version: str
+
+
+@dataclass
+class HighlightStats:
+    candidates: int = 0
+    highlighted: int = 0
+    fallbacks: int = 0
+    degraded: bool = False
+
+    @property
+    def status(self):
+        if self.degraded:
+            return "degraded"
+        return "ok" if self.candidates else "none"
+
+
 def _package_version(package_name):
     try:
         return version(package_name)
@@ -93,6 +120,23 @@ def _node_package_version(package_name):
             return "unknown"
 
     return "missing"
+
+
+def _is_executable_file(path):
+    return bool(path) and os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def _node_binary():
+    configured = os.getenv("GIST_NODE_BIN")
+    if configured:
+        return configured if _is_executable_file(configured) else None
+
+    candidates = [shutil.which("node"), *DEFAULT_NODE_BIN_CANDIDATES]
+    for candidate in candidates:
+        if _is_executable_file(candidate):
+            return candidate
+
+    return None
 
 
 def _render_gfm(markdown):
@@ -177,8 +221,16 @@ def _scope_to_highlight_class(scope):
 
 
 def _highlight_payload(blocks):
+    node_binary = _node_binary()
+    if node_binary is None:
+        logger.warning(
+            "Gist code highlighting failed",
+            extra={"reason": "node_binary_missing"},
+        )
+        return {}, True
+
     process = subprocess.run(
-        ["node", str(HIGHLIGHT_SCRIPT)],
+        [node_binary, str(HIGHLIGHT_SCRIPT)],
         cwd=str(REPO_ROOT),
         input=json.dumps(
             {
@@ -196,13 +248,13 @@ def _highlight_payload(blocks):
             "Gist code highlighting failed",
             extra={"returncode": process.returncode, "reason": "process_error"},
         )
-        return {}
+        return {}, True
 
     try:
         data = json.loads(process.stdout)
     except json.JSONDecodeError:
         logger.warning("Gist code highlighting failed", extra={"reason": "bad_json"})
-        return {}
+        return {}, True
 
     highlighted = {}
     for item in data.get("blocks", []):
@@ -212,10 +264,11 @@ def _highlight_payload(blocks):
         if not isinstance(index, int):
             continue
         highlighted[index] = item
-    return highlighted
+    return highlighted, False
 
 
 def _highlight_blocks(root):
+    stats = HighlightStats()
     candidates = []
     pre_elements = list(root.xpath(".//pre[@lang]"))
     for index, pre in enumerate(pre_elements):
@@ -223,6 +276,8 @@ def _highlight_blocks(root):
         code = _code_text(pre)
         byte_count = len(code.encode("utf-8"))
         if byte_count > MAX_HIGHLIGHT_BLOCK_BYTES:
+            stats.fallbacks += 1
+            stats.degraded = True
             logger.info(
                 "Skipping gist code highlighting",
                 extra={
@@ -233,24 +288,41 @@ def _highlight_blocks(root):
             )
             continue
         candidates.append({"index": index, "language": language, "code": code})
+    stats.candidates = len(candidates)
 
     highlighted = {}
-    if candidates and HIGHLIGHT_SCRIPT.exists():
+    if candidates and not HIGHLIGHT_SCRIPT.exists():
+        stats.degraded = True
+        logger.warning(
+            "Gist code highlighting failed",
+            extra={"reason": "highlight_script_missing"},
+        )
+    elif candidates:
         try:
-            highlighted = _highlight_payload(candidates)
+            highlighted, degraded = _highlight_payload(candidates)
+            stats.degraded = degraded
         except (
             OSError,
             subprocess.SubprocessError,
             subprocess.TimeoutExpired,
             ValueError,
-        ):
+        ) as exc:
             highlighted = {}
+            stats.degraded = True
+            logger.warning(
+                "Gist code highlighting failed",
+                extra={
+                    "reason": "highlight_exception",
+                    "error_type": type(exc).__name__,
+                },
+            )
 
     for index, pre in enumerate(pre_elements):
         language = pre.attrib.get("lang", "")
         item = highlighted.get(index)
 
         if not item:
+            stats.fallbacks += 1
             logger.info(
                 "Using plain gist code block",
                 extra={
@@ -284,6 +356,9 @@ def _highlight_blocks(root):
                 highlighted_pre.append(fragment)
 
         pre.getparent().replace(pre, wrapper)
+        stats.highlighted += 1
+
+    return stats
 
 
 def _parse_fragment(raw_html):
@@ -340,15 +415,15 @@ def _allow_attribute(tag, name, value):
     return False
 
 
-def render_markdown(markdown):
+def render_markdown_result(markdown):
     raw_html = _render_gfm(markdown)
     root = _parse_fragment(raw_html)
     _drop_scriptable_content(root)
-    _highlight_blocks(root)
+    highlight_stats = _highlight_blocks(root)
     _post_process_links(root)
     processed_html = _serialize_fragment(root)
 
-    return bleach.clean(
+    cleaned_html = bleach.clean(
         processed_html,
         tags=ALLOWED_TAGS,
         attributes=_allow_attribute,
@@ -356,13 +431,22 @@ def render_markdown(markdown):
         strip=True,
         strip_comments=True,
     )
+    return RenderedMarkdown(
+        html=cleaned_html,
+        version=render_version(highlight_stats.status),
+    )
 
 
-def render_version():
+def render_markdown(markdown):
+    return render_markdown_result(markdown).html
+
+
+def render_version(highlight_status="unknown"):
     return (
         f"cmarkgfm/{_package_version('cmarkgfm')};"
         f"starry-night/{_node_package_version('@wooorm/starry-night')};"
         f"grammar/{HIGHLIGHT_GRAMMAR_SET};"
+        f"highlight/{highlight_status};"
         f"bleach/{_package_version('bleach')};"
         f"lxml/{_package_version('lxml')};"
         f"syntax-css/{SYNTAX_CSS_VERSION};"

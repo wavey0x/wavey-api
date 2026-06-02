@@ -5,7 +5,7 @@ import sqlite3
 
 from .auth import utc_now
 from .db import gist_connection
-from .markdown import render_markdown, render_version
+from .markdown import render_markdown_result, render_version
 
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
@@ -147,8 +147,9 @@ def create_gist(app, key_id, author_name, payload):
     markdown = normalize_markdown(payload.get("markdown"))
     validate_markdown(app, markdown)
     title = normalize_title(payload.get("title"), present="title" in payload)
-    rendered_html = render_markdown(markdown)
-    version = render_version()
+    rendered = render_markdown_result(markdown)
+    rendered_html = rendered.html
+    version = rendered.version
     digest = content_sha256(markdown)
     now = utc_now()
 
@@ -322,8 +323,9 @@ def patch_gist(app, key_id, author_name, external_id, payload):
     if "markdown" in payload:
         markdown = normalize_markdown(payload["markdown"])
         validate_markdown(app, markdown)
-        rendered_html = render_markdown(markdown)
-        version = render_version()
+        rendered = render_markdown_result(markdown)
+        rendered_html = rendered.html
+        version = rendered.version
         digest = content_sha256(markdown)
     else:
         markdown = None
@@ -442,14 +444,15 @@ def rerender_gists(app, *, external_id=None, dry_run=False):
                 (external_id,),
             ).fetchall()
 
-        rendered_gists = [
-            (row["id"], render_markdown(row["markdown"]), render_version())
-            for row in gists
-        ]
-        rendered_revisions = [
-            (row["id"], render_markdown(row["markdown"]), render_version())
-            for row in revisions
-        ]
+        rendered_gists = []
+        for row in gists:
+            rendered = render_markdown_result(row["markdown"])
+            rendered_gists.append((row["id"], rendered.html, rendered.version))
+
+        rendered_revisions = []
+        for row in revisions:
+            rendered = render_markdown_result(row["markdown"])
+            rendered_revisions.append((row["id"], rendered.html, rendered.version))
 
         if not dry_run:
             with conn:
