@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import re
 import secrets
@@ -10,6 +9,7 @@ from .markdown import render_markdown, render_version
 
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
+EXTERNAL_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 REVISION_RE = re.compile(r"^[1-9][0-9]*$")
 SHA_RE = re.compile(r"^[a-f0-9]{64}$")
 
@@ -70,9 +70,7 @@ def content_sha256(markdown):
 
 
 def generate_external_id():
-    return base64.urlsafe_b64encode(secrets.token_bytes(24)).rstrip(b"=").decode(
-        "ascii"
-    )
+    return "".join(secrets.choice(EXTERNAL_ID_ALPHABET) for _ in range(32))
 
 
 def validate_external_id(external_id):
