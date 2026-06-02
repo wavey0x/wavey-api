@@ -4,6 +4,7 @@ import os
 
 from .auth import create_api_key, list_api_keys, revoke_api_key, rotate_api_key
 from .db import gist_connection, init_gist_database
+from .service import rerender_gists
 
 
 class _AppConfig:
@@ -44,24 +45,42 @@ def main(argv=None):
     rotate.add_argument("key_prefix_or_id")
     rotate.add_argument("--name")
 
+    gists = subparsers.add_parser("gists")
+    gist_commands = gists.add_subparsers(dest="command", required=True)
+
+    rerender = gist_commands.add_parser("rerender")
+    rerender_target = rerender.add_mutually_exclusive_group(required=True)
+    rerender_target.add_argument("--id", dest="external_id")
+    rerender_target.add_argument("--all", action="store_true")
+    rerender.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args(argv)
     app = _app()
     init_gist_database(app)
 
-    with gist_connection(app) as conn:
-        if args.command == "create":
-            result = create_api_key(conn, args.domain, args.name, args.scopes)
+    if args.resource == "keys":
+        with gist_connection(app) as conn:
+            if args.command == "create":
+                result = create_api_key(conn, args.domain, args.name, args.scopes)
+                print(json.dumps(result, indent=2))
+                print("Save this key now. It cannot be recovered.")
+            elif args.command == "list":
+                print(json.dumps(list_api_keys(conn, args.domain), indent=2))
+            elif args.command == "revoke":
+                revoke_api_key(conn, args.key_prefix_or_id)
+                print(json.dumps({"revoked": True}, indent=2))
+            elif args.command == "rotate":
+                result = rotate_api_key(conn, args.key_prefix_or_id, args.name)
+                print(json.dumps(result, indent=2))
+                print("Save this key now. It cannot be recovered.")
+    elif args.resource == "gists":
+        if args.command == "rerender":
+            result = rerender_gists(
+                app,
+                external_id=args.external_id,
+                dry_run=args.dry_run,
+            )
             print(json.dumps(result, indent=2))
-            print("Save this key now. It cannot be recovered.")
-        elif args.command == "list":
-            print(json.dumps(list_api_keys(conn, args.domain), indent=2))
-        elif args.command == "revoke":
-            revoke_api_key(conn, args.key_prefix_or_id)
-            print(json.dumps({"revoked": True}, indent=2))
-        elif args.command == "rotate":
-            result = rotate_api_key(conn, args.key_prefix_or_id, args.name)
-            print(json.dumps(result, indent=2))
-            print("Save this key now. It cannot be recovered.")
 
 
 if __name__ == "__main__":

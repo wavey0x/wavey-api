@@ -1,9 +1,16 @@
+from pathlib import Path
+
 import pytest
 from flask import Flask, jsonify
 
 from services.gists.auth import create_api_key, rotate_api_key, verify_api_key
 from services.gists.db import gist_connection, init_gist_database
+from services.gists.markdown import render_markdown, render_version
 from services.gists.routes import gists_api
+from services.gists.service import rerender_gists
+
+
+FIXTURE_DIR = Path(__file__).with_name("fixtures")
 
 
 @pytest.fixture()
@@ -47,6 +54,114 @@ def create_gist(client, key, markdown="# Hello", title="Title"):
         headers=auth_header(key),
         json={"title": title, "markdown": markdown},
     )
+
+
+def test_markdown_rendering_uses_gfm_highlighting_links_and_sanitizer():
+    markdown = (FIXTURE_DIR / "github_like_gist.md").read_text(encoding="utf-8")
+    html = render_markdown(markdown)
+
+    assert "<table>" in html
+    assert html.count("<table>") == 2
+    assert "<th>Field</th>" in html
+    assert "highlight highlight-source-solidity" in html
+    assert html.count("highlight highlight-source-solidity") == 2
+    assert "highlight highlight-source-vyper" in html
+    assert "highlight highlight-source-go" in html
+    assert "highlight highlight-source-python" in html
+    assert "highlight highlight-source-shell" in html
+    assert "highlight highlight-source-json" in html
+    assert "highlight highlight-source-yaml" in html
+    assert "highlight highlight-source-ts" in html
+    assert "highlight highlight-text-md" in html
+    assert "highlight highlight-source-sql" in html
+    assert "highlight highlight-source-rust" in html
+    assert "highlight highlight-source-diff" in html
+    assert "class=\"pl-" in html
+    assert '<input type="checkbox" checked disabled>' in html
+    assert '<input type="checkbox" disabled>' in html
+    assert "<del>deprecated</del>" in html
+    assert '<code class="language-unknownlang">&lt;tag onclick="bad()"&gt;' in html
+    assert "<code>indented code remains plain\n</code>" in html
+    assert '<a href="https://example.com" rel="nofollow">https://example.com</a>' in html
+    assert "javascript:" not in html
+    assert "<a>bad</a>" in html
+    assert "alert(" not in html
+    assert "<script" not in html
+    assert "<style" not in html
+    assert "<svg" not in html
+    assert "<math" not in html
+    assert "<iframe" not in html
+    assert 'class="bad"' not in html
+    assert 'class="pl-c bad"' not in html
+    assert "cmarkgfm/" in render_version()
+    assert "starry-night/" in render_version()
+    assert "syntax-css/" in render_version()
+
+
+def test_rerender_gists_updates_current_rows_and_revisions(client, app):
+    write_key = make_key(app, ["gist:write"], name="renderer")
+    created = create_gist(
+        client,
+        write_key,
+        markdown="```python\nprint('hi')\n```",
+    )
+    assert created.status_code == 201
+    gist_id = created.get_json()["id"]
+
+    with gist_connection(app) as conn:
+        with conn:
+            conn.execute(
+                """
+                update gists
+                set rendered_html = 'old', render_version = 'old'
+                where external_id = ?
+                """,
+                (gist_id,),
+            )
+            conn.execute(
+                """
+                update gist_revisions
+                set rendered_html = 'old', render_version = 'old'
+                where gist_id = (select id from gists where external_id = ?)
+                """,
+                (gist_id,),
+            )
+
+    dry_run = rerender_gists(app, external_id=gist_id, dry_run=True)
+    assert dry_run["dry_run"] is True
+    assert dry_run["gists"] == 1
+    assert dry_run["revisions"] == 1
+
+    with gist_connection(app) as conn:
+        row = conn.execute(
+            "select rendered_html, render_version from gists where external_id = ?",
+            (gist_id,),
+        ).fetchone()
+        assert dict(row) == {"rendered_html": "old", "render_version": "old"}
+
+    result = rerender_gists(app, external_id=gist_id)
+    assert result["dry_run"] is False
+    assert result["gists"] == 1
+    assert result["revisions"] == 1
+
+    with gist_connection(app) as conn:
+        row = conn.execute(
+            "select rendered_html, render_version from gists where external_id = ?",
+            (gist_id,),
+        ).fetchone()
+        revision = conn.execute(
+            """
+            select rendered_html, render_version
+            from gist_revisions
+            where gist_id = (select id from gists where external_id = ?)
+            """,
+            (gist_id,),
+        ).fetchone()
+
+    assert "highlight highlight-source-python" in row["rendered_html"]
+    assert "cmarkgfm/" in row["render_version"]
+    assert "highlight highlight-source-python" in revision["rendered_html"]
+    assert "cmarkgfm/" in revision["render_version"]
 
 
 def test_create_public_render_raw_read_patch_and_delete(client, app):

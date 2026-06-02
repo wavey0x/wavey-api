@@ -415,3 +415,72 @@ def delete_gist(app, external_id):
                 "update gists set deleted_at = coalesce(deleted_at, ?) where external_id = ?",
                 (now, external_id),
             )
+
+
+def rerender_gists(app, *, external_id=None, dry_run=False):
+    if external_id is not None and not validate_external_id(external_id):
+        raise GistError("not_found", "Not found", 404)
+
+    with gist_connection(app) as conn:
+        if external_id is None:
+            gists = conn.execute("select id, markdown from gists").fetchall()
+            revisions = conn.execute(
+                "select id, markdown from gist_revisions"
+            ).fetchall()
+        else:
+            gists = conn.execute(
+                "select id, markdown from gists where external_id = ?",
+                (external_id,),
+            ).fetchall()
+            if not gists:
+                raise GistError("not_found", "Not found", 404)
+            revisions = conn.execute(
+                """
+                select gist_revisions.id, gist_revisions.markdown
+                from gist_revisions
+                join gists on gists.id = gist_revisions.gist_id
+                where gists.external_id = ?
+                """,
+                (external_id,),
+            ).fetchall()
+
+        rendered_gists = [
+            (row["id"], render_markdown(row["markdown"]), render_version())
+            for row in gists
+        ]
+        rendered_revisions = [
+            (row["id"], render_markdown(row["markdown"]), render_version())
+            for row in revisions
+        ]
+
+        if not dry_run:
+            with conn:
+                conn.executemany(
+                    """
+                    update gists
+                    set rendered_html = ?, render_version = ?
+                    where id = ?
+                    """,
+                    [
+                        (rendered_html, version, row_id)
+                        for row_id, rendered_html, version in rendered_gists
+                    ],
+                )
+                conn.executemany(
+                    """
+                    update gist_revisions
+                    set rendered_html = ?, render_version = ?
+                    where id = ?
+                    """,
+                    [
+                        (rendered_html, version, row_id)
+                        for row_id, rendered_html, version in rendered_revisions
+                    ],
+                )
+
+    return {
+        "dry_run": dry_run,
+        "gists": len(rendered_gists),
+        "revisions": len(rendered_revisions),
+        "render_version": render_version(),
+    }
