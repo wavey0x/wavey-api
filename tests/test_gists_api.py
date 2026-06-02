@@ -208,7 +208,7 @@ def test_create_public_render_raw_read_patch_and_delete(client, app):
         "created_at",
         "updated_at",
     }
-    assert len(body["id"]) == 32
+    assert len(body["id"]) == 16
     assert body["id"].isascii()
     assert body["id"].isalnum()
     assert body["url"] == f"https://gist.example.com/{body['id']}"
@@ -318,6 +318,31 @@ def test_create_public_render_raw_read_patch_and_delete(client, app):
     assert client.get(f"/api/v1/gists/{body['id']}/render").status_code == 404
     assert client.get(f"/api/v1/gists/{body['id']}/revisions/1/render").status_code == 404
     assert client.get(f"/api/v1/gists/{body['id']}", headers=auth_header(read_key)).status_code == 404
+
+
+def test_existing_32_character_gist_ids_remain_readable(client, app):
+    write_key = make_key(app, ["gist:write"], name="creator")
+    created = client.post(
+        "/api/v1/gists",
+        json={"markdown": "# Legacy ID"},
+        headers=auth_header(write_key),
+    )
+    assert created.status_code == 201
+    original_id = created.get_json()["id"]
+    existing_id = "B" * 32
+
+    with gist_connection(app) as conn:
+        with conn:
+            conn.execute(
+                "update gists set external_id = ? where external_id = ?",
+                (existing_id, original_id),
+            )
+
+    public = client.get(f"/api/v1/gists/{existing_id}/render")
+    assert public.status_code == 200
+    body = public.get_json()
+    assert body["id"] == existing_id
+    assert body["markdown"] == "# Legacy ID"
 
 
 def test_legacy_base64url_gist_ids_remain_readable(client, app):

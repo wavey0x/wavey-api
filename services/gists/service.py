@@ -8,7 +8,7 @@ from .db import gist_connection
 from .markdown import render_markdown_result, render_version
 
 
-ID_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
+ID_RE = re.compile(r"^(?:[A-Za-z0-9]{16}|[A-Za-z0-9_-]{32})$")
 EXTERNAL_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 REVISION_RE = re.compile(r"^[1-9][0-9]*$")
 SHA_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -70,7 +70,7 @@ def content_sha256(markdown):
 
 
 def generate_external_id():
-    return "".join(secrets.choice(EXTERNAL_ID_ALPHABET) for _ in range(32))
+    return "".join(secrets.choice(EXTERNAL_ID_ALPHABET) for _ in range(16))
 
 
 def validate_external_id(external_id):
