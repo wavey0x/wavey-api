@@ -99,7 +99,7 @@ def post_gist():
         return response
 
     try:
-        body = create_gist(current_app, auth.key_id, parse_json_body())
+        body = create_gist(current_app, auth.key_id, auth.name, parse_json_body())
         return jsonify(body), 201
     except GistError as error:
         return error_response(error.code, error.message, error.status)
@@ -125,6 +125,17 @@ def render_gist(gist_id):
         return error_response(error.code, error.message, error.status)
 
 
+@gists_api.route(
+    "/api/v1/gists/<gist_id>/revisions/<revision_number>/render",
+    methods=["GET"],
+)
+def render_gist_revision(gist_id, revision_number):
+    try:
+        return jsonify(get_public_render(current_app, gist_id, revision_number))
+    except GistError as error:
+        return error_response(error.code, error.message, error.status)
+
+
 @gists_api.route("/api/v1/gists/<gist_id>", methods=["PATCH"])
 def update_gist(gist_id):
     auth, response = require_gist_auth("gist:write")
@@ -138,7 +149,13 @@ def update_gist(gist_id):
         return response
 
     try:
-        body = patch_gist(current_app, auth.key_id, gist_id, parse_json_body())
+        body = patch_gist(
+            current_app,
+            auth.key_id,
+            auth.name,
+            gist_id,
+            parse_json_body(),
+        )
         return jsonify(body)
     except GistError as error:
         return error_response(error.code, error.message, error.status)

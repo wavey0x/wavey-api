@@ -18,6 +18,7 @@ KEY_RE = re.compile(
 class AuthResult:
     key_id: int
     domain: str
+    name: str
     key_prefix: str
     scopes: frozenset[str]
 
@@ -110,7 +111,7 @@ def verify_api_key(conn, authorization_header, required_domain, required_scope):
 
     row = conn.execute(
         """
-        select id, domain, key_hash, key_prefix, scopes_json
+        select id, domain, name, key_hash, key_prefix, scopes_json
         from api_keys
         where key_prefix = ? and revoked_at is null
         """,
@@ -135,6 +136,7 @@ def verify_api_key(conn, authorization_header, required_domain, required_scope):
         AuthResult(
             key_id=row["id"],
             domain=row["domain"],
+            name=row["name"],
             key_prefix=row["key_prefix"],
             scopes=scopes,
         ),

@@ -10,6 +10,7 @@ from .markdown import render_markdown, render_version
 
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
+REVISION_RE = re.compile(r"^[1-9][0-9]*$")
 SHA_RE = re.compile(r"^[a-f0-9]{64}$")
 
 
@@ -24,6 +25,10 @@ class GistError(Exception):
 def public_url(app, external_id):
     base_url = app.config["PUBLIC_GIST_BASE_URL"].rstrip("/")
     return f"{base_url}/{external_id}"
+
+
+def revision_url(app, external_id, revision_number):
+    return f"{public_url(app, external_id)}/revisions/{revision_number}"
 
 
 def normalize_markdown(value):
@@ -43,6 +48,13 @@ def normalize_title(value, *, present=True):
     if len(title) > 200:
         raise GistError("invalid_request", "title is too long", 400)
     return title
+
+
+def normalize_author_name(value):
+    author_name = (value or "").strip()
+    if not author_name:
+        raise GistError("invalid_request", "API key name is required", 400)
+    return author_name
 
 
 def validate_markdown(app, markdown):
@@ -67,12 +79,26 @@ def validate_external_id(external_id):
     return isinstance(external_id, str) and bool(ID_RE.fullmatch(external_id))
 
 
+def parse_revision_number(revision_number):
+    if isinstance(revision_number, int):
+        if revision_number > 0:
+            return revision_number
+        raise GistError("not_found", "Not found", 404)
+    if not isinstance(revision_number, str) or not REVISION_RE.fullmatch(revision_number):
+        raise GistError("not_found", "Not found", 404)
+    return int(revision_number)
+
+
 def _row_to_api(app, row, *, include_markdown=False):
+    latest_revision_number = row["latest_revision_number"]
     body = {
         "id": row["external_id"],
         "url": public_url(app, row["external_id"]),
         "title": row["title"],
+        "author_name": row["author_name"],
         "content_sha256": row["content_sha256"],
+        "revision_number": latest_revision_number,
+        "latest_revision_number": latest_revision_number,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -81,20 +107,45 @@ def _row_to_api(app, row, *, include_markdown=False):
     return body
 
 
-def _insert_revision(conn, gist_id, title, markdown, rendered_html, version, digest, key_id, created_at):
+def _insert_revision(
+    conn,
+    gist_id,
+    revision_number,
+    title,
+    author_name,
+    markdown,
+    rendered_html,
+    version,
+    digest,
+    key_id,
+    created_at,
+):
     conn.execute(
         """
         insert into gist_revisions(
-            gist_id, title, markdown, rendered_html, render_version,
+            gist_id, revision_number, title, author_name, markdown,
+            rendered_html, render_version,
             content_sha256, created_at, created_by_key_id
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (gist_id, title, markdown, rendered_html, version, digest, created_at, key_id),
+        (
+            gist_id,
+            revision_number,
+            title,
+            author_name,
+            markdown,
+            rendered_html,
+            version,
+            digest,
+            created_at,
+            key_id,
+        ),
     )
 
 
-def create_gist(app, key_id, payload):
+def create_gist(app, key_id, author_name, payload):
+    author_name = normalize_author_name(author_name)
     markdown = normalize_markdown(payload.get("markdown"))
     validate_markdown(app, markdown)
     title = normalize_title(payload.get("title"), present="title" in payload)
@@ -111,18 +162,21 @@ def create_gist(app, key_id, payload):
                     cursor = conn.execute(
                         """
                         insert into gists(
-                            external_id, title, markdown, rendered_html, render_version,
-                            content_sha256, created_at, updated_at
+                            external_id, title, author_name, markdown, rendered_html,
+                            render_version, content_sha256, latest_revision_number,
+                            created_at, updated_at
                         )
-                        values (?, ?, ?, ?, ?, ?, ?, ?)
+                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             external_id,
                             title,
+                            author_name,
                             markdown,
                             rendered_html,
                             version,
                             digest,
+                            1,
                             now,
                             now,
                         ),
@@ -131,7 +185,9 @@ def create_gist(app, key_id, payload):
                     _insert_revision(
                         conn,
                         gist_id,
+                        1,
                         title,
+                        author_name,
                         markdown,
                         rendered_html,
                         version,
@@ -164,51 +220,106 @@ def get_gist(app, external_id, *, include_markdown=False):
         return _row_to_api(app, row, include_markdown=include_markdown)
 
 
-def get_public_render(app, external_id):
+def _history_payload(app, conn, external_id, gist_id, latest_revision_number):
+    rows = conn.execute(
+        """
+        select revision_number, created_at, author_name
+        from gist_revisions
+        where gist_id = ?
+        order by revision_number desc
+        limit 50
+        """,
+        (gist_id,),
+    ).fetchall()
+
+    return [
+        {
+            "revision_number": row["revision_number"],
+            "created_at": row["created_at"],
+            "author_name": row["author_name"],
+            "is_latest": row["revision_number"] == latest_revision_number,
+            "url": (
+                public_url(app, external_id)
+                if row["revision_number"] == latest_revision_number
+                else revision_url(app, external_id, row["revision_number"])
+            ),
+        }
+        for row in rows
+    ]
+
+
+def get_public_render(app, external_id, revision_number=None):
     if not validate_external_id(external_id):
         raise GistError("not_found", "Not found", 404)
+    parsed_revision_number = (
+        parse_revision_number(revision_number) if revision_number is not None else None
+    )
 
     with gist_connection(app) as conn:
-        row = conn.execute(
-            """
-            select external_id, title, markdown, rendered_html, updated_at
-            from gists
-            where external_id = ? and deleted_at is null
-            """,
-            (external_id,),
-        ).fetchone()
-        if row is None:
-            raise GistError("not_found", "Not found", 404)
+        if parsed_revision_number is None:
+            row = conn.execute(
+                """
+                select id, external_id, title, author_name, markdown, rendered_html,
+                       latest_revision_number, updated_at
+                from gists
+                where external_id = ? and deleted_at is null
+                """,
+                (external_id,),
+            ).fetchone()
+            if row is None:
+                raise GistError("not_found", "Not found", 404)
+            revision_number = row["latest_revision_number"]
+        else:
+            row = conn.execute(
+                """
+                select gists.id, gists.external_id, gists.latest_revision_number,
+                       gist_revisions.title, gist_revisions.author_name,
+                       gist_revisions.markdown, gist_revisions.rendered_html,
+                       gist_revisions.created_at as updated_at,
+                       gist_revisions.revision_number
+                from gists
+                join gist_revisions on gist_revisions.gist_id = gists.id
+                where gists.external_id = ?
+                  and gists.deleted_at is null
+                  and gist_revisions.revision_number = ?
+                """,
+                (external_id, parsed_revision_number),
+            ).fetchone()
+            if row is None:
+                raise GistError("not_found", "Not found", 404)
+            revision_number = row["revision_number"]
+
         return {
             "id": row["external_id"],
             "title": row["title"],
+            "author_name": row["author_name"],
             "markdown": row["markdown"],
             "rendered_html": row["rendered_html"],
+            "revision_number": revision_number,
+            "latest_revision_number": row["latest_revision_number"],
             "updated_at": row["updated_at"],
+            "history": _history_payload(
+                app,
+                conn,
+                row["external_id"],
+                row["id"],
+                row["latest_revision_number"],
+            ),
         }
 
 
-def patch_gist(app, key_id, external_id, payload):
+def patch_gist(app, key_id, author_name, external_id, payload):
     if not validate_external_id(external_id):
         raise GistError("not_found", "Not found", 404)
     if "markdown" not in payload and "title" not in payload:
         raise GistError("invalid_request", "markdown or title is required", 400)
+    author_name = normalize_author_name(author_name)
 
     expected_digest = payload.get("expected_content_sha256")
     if expected_digest is not None and not (
         isinstance(expected_digest, str) and SHA_RE.fullmatch(expected_digest)
     ):
         raise GistError("invalid_request", "expected_content_sha256 is invalid", 400)
-
-    with gist_connection(app) as conn:
-        current = conn.execute(
-            "select * from gists where external_id = ? and deleted_at is null",
-            (external_id,),
-        ).fetchone()
-        if current is None:
-            raise GistError("not_found", "Not found", 404)
-        if expected_digest is not None and expected_digest != current["content_sha256"]:
-            raise GistError("conflict", "Conflict", 409)
 
     if "markdown" in payload:
         markdown = normalize_markdown(payload["markdown"])
@@ -217,15 +328,15 @@ def patch_gist(app, key_id, external_id, payload):
         version = render_version()
         digest = content_sha256(markdown)
     else:
-        markdown = current["markdown"]
-        rendered_html = current["rendered_html"]
-        version = current["render_version"]
-        digest = current["content_sha256"]
+        markdown = None
+        rendered_html = None
+        version = None
+        digest = None
 
     title = (
         normalize_title(payload.get("title"), present=True)
         if "title" in payload
-        else current["title"]
+        else None
     )
     now = utc_now()
 
@@ -237,22 +348,37 @@ def patch_gist(app, key_id, external_id, payload):
             ).fetchone()
             if current is None:
                 raise GistError("not_found", "Not found", 404)
-            if expected_digest is not None and expected_digest != current["content_sha256"]:
+            if (
+                expected_digest is not None
+                and expected_digest != current["content_sha256"]
+            ):
                 raise GistError("conflict", "Conflict", 409)
+
+            next_title = title if "title" in payload else current["title"]
+            next_markdown = markdown if markdown is not None else current["markdown"]
+            next_rendered_html = (
+                rendered_html if rendered_html is not None else current["rendered_html"]
+            )
+            next_version = version if version is not None else current["render_version"]
+            next_digest = digest if digest is not None else current["content_sha256"]
+            next_revision_number = current["latest_revision_number"] + 1
 
             conn.execute(
                 """
                 update gists
-                set title = ?, markdown = ?, rendered_html = ?, render_version = ?,
-                    content_sha256 = ?, updated_at = ?
+                set title = ?, author_name = ?, markdown = ?, rendered_html = ?,
+                    render_version = ?, content_sha256 = ?,
+                    latest_revision_number = ?, updated_at = ?
                 where id = ?
                 """,
                 (
-                    title,
-                    markdown,
-                    rendered_html,
-                    version,
-                    digest,
+                    next_title,
+                    author_name,
+                    next_markdown,
+                    next_rendered_html,
+                    next_version,
+                    next_digest,
+                    next_revision_number,
                     now,
                     current["id"],
                 ),
@@ -260,16 +386,21 @@ def patch_gist(app, key_id, external_id, payload):
             _insert_revision(
                 conn,
                 current["id"],
-                title,
-                markdown,
-                rendered_html,
-                version,
-                digest,
+                next_revision_number,
+                next_title,
+                author_name,
+                next_markdown,
+                next_rendered_html,
+                next_version,
+                next_digest,
                 key_id,
                 now,
             )
 
-        row = conn.execute("select * from gists where id = ?", (current["id"],)).fetchone()
+        row = conn.execute(
+            "select * from gists where id = ?",
+            (current["id"],),
+        ).fetchone()
         return _row_to_api(app, row)
 
 

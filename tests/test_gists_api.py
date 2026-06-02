@@ -32,9 +32,9 @@ def client(app):
     return app.test_client()
 
 
-def make_key(app, scopes, domain="gist"):
+def make_key(app, scopes, domain="gist", name="test"):
     with gist_connection(app) as conn:
-        return create_api_key(conn, domain, "test", scopes)["key"]
+        return create_api_key(conn, domain, name, scopes)["key"]
 
 
 def auth_header(key):
@@ -50,40 +50,68 @@ def create_gist(client, key, markdown="# Hello", title="Title"):
 
 
 def test_create_public_render_raw_read_patch_and_delete(client, app):
-    write_key = make_key(app, ["gist:write", "gist:delete"])
+    write_key = make_key(app, ["gist:write", "gist:delete"], name="creator")
     read_key = make_key(app, ["gist:read"])
 
     denied = client.post("/api/v1/gists", json={"markdown": "# Nope"})
     assert denied.status_code == 401
 
-    created = create_gist(client, write_key, "# Hello\n\n- [x] done")
+    created = client.post(
+        "/api/v1/gists",
+        headers=auth_header(write_key),
+        json={
+            "title": "Title",
+            "markdown": "# Hello\n\n- [x] done",
+            "author_name": "spoofed",
+        },
+    )
     assert created.status_code == 201
     body = created.get_json()
     assert set(body) == {
         "id",
         "url",
         "title",
+        "author_name",
         "content_sha256",
+        "revision_number",
+        "latest_revision_number",
         "created_at",
         "updated_at",
     }
     assert len(body["id"]) == 32
     assert body["url"] == f"https://gist.example.com/{body['id']}"
+    assert body["author_name"] == "creator"
+    assert body["revision_number"] == 1
+    assert body["latest_revision_number"] == 1
 
     public = client.get(f"/api/v1/gists/{body['id']}/render")
     assert public.status_code == 200
     public_body = public.get_json()
     assert public_body["markdown"] == "# Hello\n\n- [x] done"
+    assert public_body["author_name"] == "creator"
+    assert public_body["revision_number"] == 1
+    assert public_body["latest_revision_number"] == 1
     assert "<h1>Hello</h1>" in public_body["rendered_html"]
     assert "disabled" in public_body["rendered_html"]
     assert "url" not in public_body
+    assert public_body["history"] == [
+        {
+            "revision_number": 1,
+            "created_at": public_body["history"][0]["created_at"],
+            "author_name": "creator",
+            "is_latest": True,
+            "url": body["url"],
+        }
+    ]
 
     forbidden = client.get(f"/api/v1/gists/{body['id']}", headers=auth_header(write_key))
     assert forbidden.status_code == 403
 
     raw = client.get(f"/api/v1/gists/{body['id']}", headers=auth_header(read_key))
     assert raw.status_code == 200
-    assert raw.get_json()["markdown"] == "# Hello\n\n- [x] done"
+    raw_body = raw.get_json()
+    assert raw_body["markdown"] == "# Hello\n\n- [x] done"
+    assert raw_body["author_name"] == "creator"
 
     stale = client.patch(
         f"/api/v1/gists/{body['id']}",
@@ -92,30 +120,71 @@ def test_create_public_render_raw_read_patch_and_delete(client, app):
     )
     assert stale.status_code == 409
 
+    editor_key = make_key(app, ["gist:write", "gist:delete"], name="editor")
     updated = client.patch(
         f"/api/v1/gists/{body['id']}",
-        headers=auth_header(write_key),
+        headers=auth_header(editor_key),
         json={"title": None, "markdown": "# Updated"},
     )
     assert updated.status_code == 200
-    assert updated.get_json()["title"] is None
+    updated_body = updated.get_json()
+    assert updated_body["title"] is None
+    assert updated_body["author_name"] == "editor"
+    assert updated_body["revision_number"] == 2
+    assert updated_body["latest_revision_number"] == 2
 
     with gist_connection(app) as conn:
-        revision_count = conn.execute(
+        revision_rows = conn.execute(
             """
-            select count(*) as count
+            select gist_revisions.revision_number, gist_revisions.author_name
             from gist_revisions
             join gists on gists.id = gist_revisions.gist_id
             where gists.external_id = ?
+            order by revision_number
             """,
             (body["id"],),
-        ).fetchone()["count"]
-    assert revision_count == 2
+        ).fetchall()
+        gist_row = conn.execute(
+            "select author_name, latest_revision_number from gists where external_id = ?",
+            (body["id"],),
+        ).fetchone()
+    assert [dict(row) for row in revision_rows] == [
+        {"revision_number": 1, "author_name": "creator"},
+        {"revision_number": 2, "author_name": "editor"},
+    ]
+    assert dict(gist_row) == {"author_name": "editor", "latest_revision_number": 2}
 
-    deleted = client.delete(f"/api/v1/gists/{body['id']}", headers=auth_header(write_key))
+    latest = client.get(f"/api/v1/gists/{body['id']}/render")
+    assert latest.status_code == 200
+    latest_body = latest.get_json()
+    assert latest_body["markdown"] == "# Updated"
+    assert latest_body["author_name"] == "editor"
+    assert latest_body["revision_number"] == 2
+    assert latest_body["latest_revision_number"] == 2
+    assert len(latest_body["history"]) == 2
+    assert latest_body["history"][0]["revision_number"] == 2
+    assert latest_body["history"][0]["is_latest"] is True
+    assert latest_body["history"][0]["url"] == body["url"]
+    assert latest_body["history"][1]["revision_number"] == 1
+    assert latest_body["history"][1]["is_latest"] is False
+    assert latest_body["history"][1]["url"] == f"{body['url']}/revisions/1"
+
+    first_revision = client.get(f"/api/v1/gists/{body['id']}/revisions/1/render")
+    assert first_revision.status_code == 200
+    first_revision_body = first_revision.get_json()
+    assert first_revision_body["markdown"] == "# Hello\n\n- [x] done"
+    assert first_revision_body["author_name"] == "creator"
+    assert first_revision_body["revision_number"] == 1
+    assert first_revision_body["latest_revision_number"] == 2
+
+    assert client.get(f"/api/v1/gists/{body['id']}/revisions/0/render").status_code == 404
+    assert client.get(f"/api/v1/gists/{body['id']}/revisions/nope/render").status_code == 404
+
+    deleted = client.delete(f"/api/v1/gists/{body['id']}", headers=auth_header(editor_key))
     assert deleted.status_code == 204
 
     assert client.get(f"/api/v1/gists/{body['id']}/render").status_code == 404
+    assert client.get(f"/api/v1/gists/{body['id']}/revisions/1/render").status_code == 404
     assert client.get(f"/api/v1/gists/{body['id']}", headers=auth_header(read_key)).status_code == 404
 
 
@@ -140,6 +209,33 @@ def test_sanitizer_strips_scriptable_content(client, app):
     assert "onerror" not in html
     assert "onclick" not in html
     assert "<svg" not in html
+
+
+def test_public_history_is_bounded_to_latest_50_revisions(client, app):
+    write_key = make_key(app, ["gist:write"], name="historian")
+    created = create_gist(client, write_key, "# First")
+    assert created.status_code == 201
+    gist_id = created.get_json()["id"]
+
+    for index in range(52):
+        updated = client.patch(
+            f"/api/v1/gists/{gist_id}",
+            headers=auth_header(write_key),
+            json={"title": f"Revision {index + 2}"},
+        )
+        assert updated.status_code == 200
+
+    public = client.get(f"/api/v1/gists/{gist_id}/render")
+    assert public.status_code == 200
+    history = public.get_json()["history"]
+    assert len(history) == 50
+    assert history[0]["revision_number"] == 53
+    assert history[0]["is_latest"] is True
+    assert history[-1]["revision_number"] == 4
+
+    first_revision = client.get(f"/api/v1/gists/{gist_id}/revisions/1/render")
+    assert first_revision.status_code == 200
+    assert first_revision.get_json()["revision_number"] == 1
 
 
 def test_validation_and_non_gist_routes_are_not_globally_authed(client, app):

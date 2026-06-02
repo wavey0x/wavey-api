@@ -19,24 +19,35 @@ MIGRATIONS = [
             last_used_at text null,
             revoked_at text null
         );
+        """,
+    ),
+    (
+        2,
+        """
+        drop table if exists gist_revisions;
+        drop table if exists gists;
 
-        create table if not exists gists (
+        create table gists (
             id integer primary key,
             external_id text not null unique,
             title text null,
+            author_name text not null,
             markdown text not null,
             rendered_html text not null,
             render_version text not null,
             content_sha256 text not null,
+            latest_revision_number integer not null,
             created_at text not null,
             updated_at text not null,
             deleted_at text null
         );
 
-        create table if not exists gist_revisions (
+        create table gist_revisions (
             id integer primary key,
             gist_id integer not null references gists(id),
+            revision_number integer not null,
             title text null,
+            author_name text not null,
             markdown text not null,
             rendered_html text not null,
             render_version text not null,
@@ -47,6 +58,9 @@ MIGRATIONS = [
 
         create index if not exists idx_gist_revisions_gist_id
             on gist_revisions(gist_id);
+
+        create unique index if not exists idx_gist_revisions_gist_id_revision_number
+            on gist_revisions(gist_id, revision_number);
         """,
     ),
 ]
