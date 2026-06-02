@@ -2,8 +2,13 @@
 .venv
 venv
 .vscode
+__pycache__
+*.pyc
 api.log
 access.log
 error.log
 gunicorn_config.py
 app.log
+gists.sqlite3
+gists.sqlite3-shm
+gists.sqlite3-wal

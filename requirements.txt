@@ -9,3 +9,5 @@ python-dateutil
 flask_cors
 psycopg2-binary
 gunicorn
+markdown-it-py[linkify,plugins]
+bleach
