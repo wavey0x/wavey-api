@@ -7,14 +7,21 @@ from .db import gist_connection, init_gist_database
 from .service import rerender_gists
 
 
+GIST_ROLE_SCOPES = {
+    "user": ["gist:read", "gist:write"],
+    "admin": ["gist:read", "gist:write", "gist:delete"],
+}
+
+
 class _AppConfig:
-    config = {
-        "SQLITE_DB_PATH": os.getenv("SQLITE_DB_PATH"),
-        "SQLITE_BUSY_TIMEOUT_MS": int(os.getenv("SQLITE_BUSY_TIMEOUT_MS", "5000")),
-    }
+    config = {}
 
 
 def _app():
+    _AppConfig.config = {
+        "SQLITE_DB_PATH": os.getenv("SQLITE_DB_PATH"),
+        "SQLITE_BUSY_TIMEOUT_MS": int(os.getenv("SQLITE_BUSY_TIMEOUT_MS", "5000")),
+    }
     if not _AppConfig.config["SQLITE_DB_PATH"]:
         raise RuntimeError("SQLITE_DB_PATH must be set")
     return _AppConfig
@@ -24,6 +31,14 @@ def _scopes(value):
     return [scope.strip() for scope in value.split(",") if scope.strip()]
 
 
+def _resolve_create_args(args):
+    if args.scopes:
+        return args.domain or "gist", args.scopes
+    if args.domain and args.domain != "gist":
+        raise ValueError("--scopes is required when --domain is not gist")
+    return "gist", GIST_ROLE_SCOPES[args.role or "user"]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="admin")
     subparsers = parser.add_subparsers(dest="resource", required=True)
@@ -31,9 +46,10 @@ def main(argv=None):
     key_commands = keys.add_subparsers(dest="command", required=True)
 
     create = key_commands.add_parser("create")
-    create.add_argument("--domain", required=True)
+    create.add_argument("--domain")
     create.add_argument("--name", required=True)
-    create.add_argument("--scopes", required=True, type=_scopes)
+    create.add_argument("--role", choices=sorted(GIST_ROLE_SCOPES), default="user")
+    create.add_argument("--scopes", type=_scopes)
 
     list_cmd = key_commands.add_parser("list")
     list_cmd.add_argument("--domain")
@@ -61,7 +77,11 @@ def main(argv=None):
     if args.resource == "keys":
         with gist_connection(app) as conn:
             if args.command == "create":
-                result = create_api_key(conn, args.domain, args.name, args.scopes)
+                try:
+                    domain, scopes = _resolve_create_args(args)
+                except ValueError as exc:
+                    parser.error(str(exc))
+                result = create_api_key(conn, domain, args.name, scopes)
                 print(json.dumps(result, indent=2))
                 print("Save this key now. It cannot be recovered.")
             elif args.command == "list":

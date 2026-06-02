@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 import pytest
 from flask import Flask, jsonify
 
+from services.gists.admin import main as admin_main
 from services.gists.auth import create_api_key, rotate_api_key, verify_api_key
 from services.gists.db import gist_connection, init_gist_database
 from services.gists.markdown import (
@@ -460,3 +462,56 @@ def test_key_rotation_revokes_old_key_and_returns_new_secret(app):
     assert new_auth is not None
     assert new_error is None
     assert rotated["key"].startswith("wapi_gist_")
+
+
+def _admin_json(output):
+    return json.loads(output.split("\nSave this key now.", 1)[0])
+
+
+def test_admin_key_create_defaults_to_gist_user_role(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "admin.sqlite3"))
+
+    admin_main(["keys", "create", "--name", "Alice"])
+
+    body = _admin_json(capsys.readouterr().out)
+    assert body["domain"] == "gist"
+    assert body["name"] == "Alice"
+    assert body["scopes"] == ["gist:read", "gist:write"]
+    assert body["key"].startswith("wapi_gist_")
+
+
+def test_admin_key_create_supports_gist_admin_role(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "admin.sqlite3"))
+
+    admin_main(["keys", "create", "--name", "Alice Admin", "--role", "admin"])
+
+    body = _admin_json(capsys.readouterr().out)
+    assert body["domain"] == "gist"
+    assert body["name"] == "Alice Admin"
+    assert body["scopes"] == ["gist:read", "gist:write", "gist:delete"]
+
+
+def test_admin_key_create_keeps_custom_domain_scope_escape_hatch(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "admin.sqlite3"))
+
+    admin_main(
+        [
+            "keys",
+            "create",
+            "--domain",
+            "prices",
+            "--name",
+            "Prices Reader",
+            "--scopes",
+            "prices:read",
+        ]
+    )
+
+    body = _admin_json(capsys.readouterr().out)
+    assert body["domain"] == "prices"
+    assert body["name"] == "Prices Reader"
+    assert body["scopes"] == ["prices:read"]
