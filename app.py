@@ -8,7 +8,6 @@ from config import Config
 from flask_cors import CORS
 from services.gauge_info import GaugeInfoService
 from routes import api
-from services.gists import gists_api, init_gist_database
 import services.resupply as resupply
 import time
 
@@ -38,13 +37,11 @@ app = Flask(__name__)
 CORS(app)
 app.config.from_object(Config())
 db.init_app(app)
-init_gist_database(app)
 
 # Log startup information
 logger.info("Starting application")
 
 app.register_blueprint(api, url_prefix='/api')
-app.register_blueprint(gists_api)
 
 # Create a single gauge service instance for the app
 gauge_service = GaugeInfoService()
