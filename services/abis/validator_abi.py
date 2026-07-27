@@ -1,11 +1,11 @@
 VALIDATOR_ABI = [
     {
         "inputs": [],
-        "name": "proposalModule",
+        "name": "getActiveProposals",
         "outputs": [
             {
-                "name": "",
-                "type": "address"
+                "name": "proposalIds",
+                "type": "uint256[]"
             }
         ],
         "stateMutability": "view",
@@ -28,21 +28,6 @@ VALIDATOR_ABI = [
                 ],
                 "name": "results",
                 "type": "tuple[]"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }
-]
-
-PROPOSAL_MODULE_ABI = [
-    {
-        "inputs": [],
-        "name": "getActiveProposals",
-        "outputs": [
-            {
-                "name": "proposalIds",
-                "type": "uint256[]"
             }
         ],
         "stateMutability": "view",

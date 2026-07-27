@@ -7,7 +7,6 @@ from web3 import Web3
 from services import crvlol
 
 
-PROPOSAL_MODULE = "0x9999032142B45AE92e11a5E10A45F49f58b67773"
 VALID_GAUGE = "0xbe0451815b546F705ef3f398B8179aE3AADDA14e"
 INVALID_GAUGE = "0x055be5DDB7A925BfEF3417FC157f53CA77cA7222"
 
@@ -24,23 +23,16 @@ class Call:
 
 
 class CoreFunctions:
-    def __init__(self, analyses):
+    def __init__(self, analyses, proposal_ids=None, proposal_error=None):
         self.analyses = analyses
+        self.proposal_ids = proposal_ids
+        self.proposal_error = proposal_error
 
-    def proposalModule(self):
-        return Call(PROPOSAL_MODULE)
+    def getActiveProposals(self):
+        return Call(self.proposal_ids, self.proposal_error)
 
     def analyzeProposalGauges(self, proposal_id):
         return Call(self.analyses[proposal_id])
-
-
-class ProposalFunctions:
-    def __init__(self, proposal_ids=None, error=None):
-        self.proposal_ids = proposal_ids
-        self.error = error
-
-    def getActiveProposals(self):
-        return Call(self.proposal_ids, self.error)
 
 
 class DAOFunctions:
@@ -67,15 +59,12 @@ def _contract(functions):
 
 def _call_endpoint(analyses, proposal_ids=None, proposal_error=None):
     web3 = Web3()
-    core = _contract(CoreFunctions(analyses))
-    proposal = _contract(ProposalFunctions(proposal_ids, proposal_error))
+    core = _contract(CoreFunctions(analyses, proposal_ids, proposal_error))
     dao = _contract(DAOFunctions())
 
     def contract_for(_web3, address, _abi):
         if address == crvlol.GAUGE_VALIDATOR_ADDRESS:
             return core
-        if address == PROPOSAL_MODULE:
-            return proposal
         if address == crvlol.CURVE_DAO_ADDRESS:
             return dao
         raise AssertionError(f"unexpected contract address: {address}")
