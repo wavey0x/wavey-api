@@ -5,13 +5,13 @@ import json, os, glob
 from dotenv import load_dotenv
 from web3 import Web3
 from .web3_services import setup_web3, get_contract
-from .abis.validator_abi import DAO_ABI, VALIDATOR_ABI
+from .abis.validator_abi import DAO_ABI, PROPOSAL_MODULE_ABI, VALIDATOR_ABI
 
 load_dotenv()
 
 GAUGE_VALIDATOR_ADDRESS = os.getenv(
     'GAUGE_VALIDATOR_ADDRESS',
-    '0xbEF66C2c0Cd93C00C545938Ff3f5b50b2D91ccc6'
+    '0x999901cd8568Caafeb8888F18C1F5B870B58b7F2'
 )
 CURVE_DAO_ADDRESS = os.getenv(
     'CURVE_DAO_ADDRESS',
@@ -150,9 +150,17 @@ def _format_gauge_validations(web3, validations):
         for validation in validations
     ]
 
+
+def _gauge_validation_status(all_valid, gauge_validations):
+    if gauge_validations:
+        return "valid" if all_valid else "invalid"
+    return "not_applicable" if all_valid else "unsupported"
+
+
 def get_curve_gov_proposals():
     """
-    Fetch active proposals from the Curve governance contract.
+    Fetch every active ownership proposal and its derived gauge-validation
+    status.
     
     Returns:
         JSON response containing proposal information
@@ -161,13 +169,21 @@ def get_curve_gov_proposals():
         # Initialize web3
         web3 = setup_web3()
         validator_contract = get_contract(web3, GAUGE_VALIDATOR_ADDRESS, VALIDATOR_ABI)
+        proposal_module_address = validator_contract.functions.proposalModule().call()
+        proposal_module_contract = get_contract(
+            web3,
+            proposal_module_address,
+            PROPOSAL_MODULE_ABI
+        )
         dao_contract = get_contract(web3, CURVE_DAO_ADDRESS, DAO_ABI)
-        proposal_ids = validator_contract.functions.getActiveProposals().call()
+        proposal_ids = proposal_module_contract.functions.getActiveProposals().call()
         
         # Format the response
         formatted_proposals = []
         for proposal_id in proposal_ids:
-            validations = validator_contract.functions.validateProposalGauges(proposal_id).call()
+            all_valid, validations = (
+                validator_contract.functions.analyzeProposalGauges(proposal_id).call()
+            )
             gauge_validations = _format_gauge_validations(web3, validations)
             vote = dao_contract.functions.getVote(proposal_id).call()
 
@@ -175,11 +191,12 @@ def get_curve_gov_proposals():
                 "id": int(proposal_id),
                 "gauges": [validation["gauge"] for validation in gauge_validations],
                 "gaugeValidations": gauge_validations,
+                "gaugeValidationStatus": _gauge_validation_status(
+                    bool(all_valid),
+                    gauge_validations
+                ),
                 "executed": bool(vote[1]),
-                "startDate": int(vote[2]),
-                "isValid": bool(gauge_validations) and all(
-                    validation["valid"] for validation in gauge_validations
-                )
+                "startDate": int(vote[2])
             })
         
         return jsonify({

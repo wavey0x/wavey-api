@@ -1,11 +1,11 @@
 VALIDATOR_ABI = [
     {
         "inputs": [],
-        "name": "getActiveProposals",
+        "name": "proposalModule",
         "outputs": [
             {
-                "name": "proposalIds",
-                "type": "uint256[]"
+                "name": "",
+                "type": "address"
             }
         ],
         "stateMutability": "view",
@@ -15,22 +15,12 @@ VALIDATOR_ABI = [
         "inputs": [
             {"name": "proposalId", "type": "uint256"}
         ],
-        "name": "getProposalGauges",
+        "name": "analyzeProposalGauges",
         "outputs": [
             {
-                "name": "gauges",
-                "type": "address[]"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {"name": "proposalId", "type": "uint256"}
-        ],
-        "name": "validateProposalGauges",
-        "outputs": [
+                "name": "allValid",
+                "type": "bool"
+            },
             {
                 "components": [
                     {"name": "gauge", "type": "address"},
@@ -42,16 +32,17 @@ VALIDATOR_ABI = [
         ],
         "stateMutability": "view",
         "type": "function"
-    },
+    }
+]
+
+PROPOSAL_MODULE_ABI = [
     {
-        "inputs": [
-            {"name": "gauge", "type": "address"}
-        ],
-        "name": "validateGauge",
+        "inputs": [],
+        "name": "getActiveProposals",
         "outputs": [
             {
-                "name": "",
-                "type": "bool"
+                "name": "proposalIds",
+                "type": "uint256[]"
             }
         ],
         "stateMutability": "view",
