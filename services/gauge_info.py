@@ -5,7 +5,6 @@ import requests
 import time
 import logging
 from typing import Dict, Any, Optional, List
-import json
 from datetime import datetime, timedelta
 from .verify_gauge import verify_gauge_by_address
 from .constants import PROVIDER_WALLETS, MAX_BOOST, PER_MAX_BOOST
@@ -13,7 +12,7 @@ from .web3_services import setup_web3, get_contract
 from .boost import BoostService
 from .abis.gauge_abi import GAUGE_ABI
 from collections import defaultdict
-import os
+from .crvlol_snapshot import get_snapshot_path, load_snapshot
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -67,69 +66,14 @@ class GaugeInfoService:
             Dictionary containing curve gauge data or None if file not found
         """
         try:
-            logger.info("Starting local curve gauge data loading...")
-            
-            filepath = os.getenv('HOME_DIRECTORY')
-            logger.info(f"HOME_DIRECTORY environment variable: {filepath}")
-            
-            if not filepath:
-                logger.warning("HOME_DIRECTORY environment variable not set")
+            gauge_data = load_snapshot().get("curve_gauge_data")
+            if not isinstance(gauge_data, dict):
+                logger.warning("CRV snapshot has no curve_gauge_data object")
                 return None
-                
-            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
-            logger.info(f"Full file path: {filepath}")
-            
-            if not os.path.exists(filepath):
-                logger.warning(f"Local ll_info file not found: {filepath}")
-                # Check if the directory exists
-                dir_path = os.path.dirname(filepath)
-                if os.path.exists(dir_path):
-                    logger.info(f"Directory exists: {dir_path}")
-                    # List files in directory
-                    try:
-                        files = os.listdir(dir_path)
-                        logger.info(f"Files in directory: {files}")
-                    except Exception as e:
-                        logger.error(f"Error listing directory contents: {e}")
-                else:
-                    logger.warning(f"Directory does not exist: {dir_path}")
-                return None
-                
-            logger.info(f"File exists, attempting to read...")
-            
-            # Check file size
-            file_size = os.path.getsize(filepath)
-            logger.info(f"File size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
-            
-            with open(filepath) as file:
-                logger.info("File opened successfully, parsing JSON...")
-                data = json.load(file)
-                logger.info(f"JSON parsed successfully, data type: {type(data)}")
-                
-            # Handle the correct data structure where gauge data is under 'curve_gauge_data' key
-            if isinstance(data, dict):
-                if "curve_gauge_data" in data:
-                    gauge_data = data["curve_gauge_data"]
-                    logger.info(f"Successfully loaded local curve gauge data with {len(gauge_data)} gauges from 'curve_gauge_data' key")
-                    return gauge_data
-                # Fallback: If data has the same structure as external API
-                elif "success" in data and "data" in data:
-                    actual_data = data.get("data", {})
-                    logger.info(f"Successfully loaded local curve gauge data with {len(actual_data)} gauges (API format)")
-                    return actual_data
-                # Fallback: If data is directly the gauge data
-                else:
-                    logger.info(f"Successfully loaded local curve gauge data with {len(data)} gauges (direct format)")
-                    return data
-            else:
-                logger.warning(f"Unexpected data format in local file: {type(data)}")
-                return None
-                
+            logger.info("Loaded %s gauges from CRV snapshot", len(gauge_data))
+            return gauge_data
         except Exception as e:
-            logger.error(f"Error loading local curve gauge data: {e}")
-            logger.error(f"Exception type: {type(e).__name__}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.warning("Unable to load CRV snapshot: %s", e)
             return None
     
     def _fetch_all_gauges(self) -> Dict[str, Any]:
@@ -231,16 +175,9 @@ class GaugeInfoService:
         # Determine data source
         data_source = "none"
         if self._gauge_data_cache is not None:
-            # Check if we have a local file path to determine source
             try:
-                filepath = os.getenv('HOME_DIRECTORY')
-                if filepath:
-                    local_file_path = f'{filepath}/curve-ll-charts/data/ll_info.json'
-                    if os.path.exists(local_file_path):
-                        data_source = "local_file"
-                    else:
-                        data_source = "external_api"
-            except:
+                data_source = "local_file" if get_snapshot_path().is_file() else "external_api"
+            except RuntimeError:
                 data_source = "unknown"
         
         return {
@@ -382,72 +319,33 @@ class GaugeInfoService:
             Dictionary with file status information
         """
         try:
-            filepath = os.getenv('HOME_DIRECTORY')
-            if not filepath:
+            filepath = get_snapshot_path()
+            if not filepath.is_file():
                 return {
                     "status": "error",
-                    "message": "HOME_DIRECTORY environment variable not set",
-                    "filepath": None
+                    "message": "CRV snapshot not found",
+                    "filepath": str(filepath)
                 }
-                
-            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
-            
-            if not os.path.exists(filepath):
-                return {
-                    "status": "error",
-                    "message": "Local curve gauge data file not found",
-                    "filepath": filepath
-                }
-            
-            # Get file stats
-            file_stats = os.stat(filepath)
+            file_stats = filepath.stat()
             file_size = file_stats.st_size
-            
-            # Try to load and parse the file
-            try:
-                with open(filepath) as file:
-                    data = json.load(file)
-                
-                data_type = type(data).__name__
-                if isinstance(data, dict):
-                    if "success" in data and "data" in data:
-                        actual_data = data.get("data", {})
-                        gauge_count = len(actual_data) if isinstance(actual_data, dict) else 0
-                        data_structure = "API format"
-                    else:
-                        gauge_count = len(data)
-                        data_structure = "direct format"
-                else:
-                    gauge_count = "N/A"
-                    data_structure = f"unexpected: {data_type}"
-                
-                return {
-                    "status": "success",
-                    "message": "Local file loaded successfully",
-                    "filepath": filepath,
-                    "file_size_bytes": file_size,
-                    "file_size_mb": round(file_size / (1024 * 1024), 2),
-                    "last_modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
-                    "data_type": data_type,
-                    "data_structure": data_structure,
-                    "gauge_count": gauge_count
-                }
-                
-            except json.JSONDecodeError as e:
-                return {
-                    "status": "error",
-                    "message": f"JSON decode error: {str(e)}",
-                    "filepath": filepath,
-                    "file_size_bytes": file_size,
-                    "file_size_mb": round(file_size / (1024 * 1024), 2),
-                    "last_modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat()
-                }
-                
+            data = load_snapshot()
+            gauge_data = data.get("curve_gauge_data", {})
+            return {
+                "status": "success",
+                "message": "CRV snapshot loaded successfully",
+                "filepath": str(filepath),
+                "file_size_bytes": file_size,
+                "file_size_mb": round(file_size / (1024 * 1024), 2),
+                "last_modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+                "data_type": type(data).__name__,
+                "data_structure": "CRV snapshot",
+                "gauge_count": len(gauge_data) if isinstance(gauge_data, dict) else 0
+            }
         except Exception as e:
             return {
                 "status": "error",
                 "message": f"Error checking file: {str(e)}",
-                "filepath": filepath if 'filepath' in locals() else None
+                "filepath": str(filepath) if 'filepath' in locals() else None
             }
     
     def test_local_file_loading(self) -> Dict[str, Any]:
@@ -457,147 +355,13 @@ class GaugeInfoService:
         Returns:
             Dictionary with detailed test results
         """
-        logger.info("=== Testing Local File Loading ===")
-        
-        try:
-            # Test 1: Environment variable
-            home_dir = os.getenv('HOME_DIRECTORY')
-            logger.info(f"Test 1 - HOME_DIRECTORY: {home_dir}")
-            
-            if not home_dir:
-                return {
-                    "success": False,
-                    "error": "HOME_DIRECTORY environment variable not set",
-                    "tests": {
-                        "env_var": False,
-                        "file_path": None,
-                        "file_exists": False,
-                        "file_readable": False,
-                        "json_parse": False
-                    }
-                }
-            
-            # Test 2: File path construction
-            file_path = f'{home_dir}/curve-ll-charts/data/ll_info.json'
-            logger.info(f"Test 2 - File path: {file_path}")
-            
-            # Test 3: File existence
-            file_exists = os.path.exists(file_path)
-            logger.info(f"Test 3 - File exists: {file_exists}")
-            
-            if not file_exists:
-                # Check directory structure
-                dir_path = os.path.dirname(file_path)
-                dir_exists = os.path.exists(dir_path)
-                logger.info(f"Directory exists: {dir_exists}")
-                
-                if dir_exists:
-                    try:
-                        files = os.listdir(dir_path)
-                        logger.info(f"Files in directory: {files}")
-                    except Exception as e:
-                        logger.error(f"Error listing directory: {e}")
-                
-                return {
-                    "success": False,
-                    "error": "File not found",
-                    "file_path": file_path,
-                    "directory_exists": dir_exists,
-                    "tests": {
-                        "env_var": True,
-                        "file_path": file_path,
-                        "file_exists": False,
-                        "file_readable": False,
-                        "json_parse": False
-                    }
-                }
-            
-            # Test 4: File readability
-            try:
-                file_size = os.path.getsize(file_path)
-                logger.info(f"Test 4 - File size: {file_size} bytes")
-                file_readable = True
-            except Exception as e:
-                logger.error(f"Error getting file size: {e}")
-                file_readable = False
-                file_size = None
-            
-            # Test 5: JSON parsing
-            json_parse_success = False
-            data = None
-            try:
-                with open(file_path, 'r') as file:
-                    data = json.load(file)
-                json_parse_success = True
-                logger.info(f"Test 5 - JSON parse success: {json_parse_success}")
-                logger.info(f"Data type: {type(data)}")
-                if isinstance(data, dict):
-                    logger.info(f"Data keys: {list(data.keys()) if len(data) <= 10 else list(data.keys())[:10] + ['...']}")
-                    
-                    # Check for the expected 'curve_gauge_data' key
-                    if "curve_gauge_data" in data:
-                        gauge_data = data["curve_gauge_data"]
-                        logger.info(f"Found 'curve_gauge_data' key with {len(gauge_data)} gauges")
-                        if isinstance(gauge_data, dict) and len(gauge_data) > 0:
-                            sample_gauge_keys = list(gauge_data.keys())[:3]
-                            logger.info(f"Sample gauge keys: {sample_gauge_keys}")
-                    else:
-                        logger.warning("'curve_gauge_data' key not found in data")
-                        
-            except Exception as e:
-                logger.error(f"Error parsing JSON: {e}")
-                json_parse_success = False
-            
-            # Determine data structure and gauge count
-            data_structure = "unknown"
-            gauge_count = 0
-            
-            if data and isinstance(data, dict):
-                if "curve_gauge_data" in data:
-                    gauge_data = data["curve_gauge_data"]
-                    data_structure = "curve_gauge_data key format"
-                    gauge_count = len(gauge_data) if isinstance(gauge_data, dict) else 0
-                elif "success" in data and "data" in data:
-                    actual_data = data.get("data", {})
-                    data_structure = "API format"
-                    gauge_count = len(actual_data) if isinstance(actual_data, dict) else 0
-                else:
-                    data_structure = "direct format"
-                    gauge_count = len(data)
-            
-            # Return comprehensive test results
-            return {
-                "success": json_parse_success,
-                "file_path": file_path,
-                "file_size_bytes": file_size,
-                "file_size_mb": round(file_size / (1024 * 1024), 2) if file_size else None,
-                "data_type": type(data).__name__ if data else None,
-                "data_structure": data_structure,
-                "gauge_count": gauge_count,
-                "tests": {
-                    "env_var": True,
-                    "file_path": file_path,
-                    "file_exists": True,
-                    "file_readable": file_readable,
-                    "json_parse": json_parse_success
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in test_local_file_loading: {e}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": str(e),
-                "tests": {
-                    "env_var": False,
-                    "file_path": None,
-                    "file_exists": False,
-                    "file_readable": False,
-                    "json_parse": False
-                }
-            }
+        status = self.check_local_file_status()
+        return {
+            "success": status["status"] == "success",
+            "file_path": status.get("filepath"),
+            "gauge_count": status.get("gauge_count", 0),
+            "error": None if status["status"] == "success" else status["message"]
+        }
     
     def _find_gauge_by_address(self, gauge_address: str) -> Optional[Dict[str, Any]]:
         """
@@ -1075,21 +839,7 @@ class GaugeInfoService:
             return response
         
         try:
-            # Load the curve_gauges_by_name data from local file
-            filepath = os.getenv('HOME_DIRECTORY')
-            if not filepath:
-                response["message"] = "HOME_DIRECTORY environment variable not set"
-                return response
-                
-            filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
-            
-            if not os.path.exists(filepath):
-                response["message"] = "Local ll_info file not found"
-                return response
-            
-            with open(filepath) as file:
-                data = json.load(file)
-            
+            data = load_snapshot()
             # Get the curve_gauges_by_name data
             gauges_by_name = data.get("curve_gauges_by_name", {})
             if not gauges_by_name:
@@ -1206,4 +956,4 @@ def get_gauge_info():
 
 if __name__ == '__main__':
     app.run(debug=True)
-""" 
+"""

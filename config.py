@@ -44,19 +44,6 @@ def _get_int_env_alias(name, legacy_name, default):
         raise RuntimeError(f"{name} must be an integer") from exc
 
 
-def _get_bool_env(name, default):
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return default
-
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "y", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "n", "off"}:
-        return False
-    raise RuntimeError(f"{name} must be a boolean")
-
-
 def _get_bool_env_alias(name, legacy_name, default):
     value = os.getenv(name)
     if value is None or not value.strip():
@@ -76,14 +63,7 @@ class Config:
     def __init__(self):
         self.SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI')
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
-        self.SQLITE_DB_PATH = os.getenv('SQLITE_DB_PATH', os.path.abspath('gists.sqlite3'))
-        self.SQLITE_BUSY_TIMEOUT_MS = _get_int_env('SQLITE_BUSY_TIMEOUT_MS', 5000)
-        self.PUBLIC_GIST_BASE_URL = os.getenv('PUBLIC_GIST_BASE_URL', 'http://localhost:3000')
         self.PORT = _get_int_env('PORT', 3001)
-        self.API_RATE_LIMIT_PER_MINUTE = _get_int_env('API_RATE_LIMIT_PER_MINUTE', 60)
-        self.API_AUTH_FAILURE_LIMIT_PER_MINUTE = _get_int_env('API_AUTH_FAILURE_LIMIT_PER_MINUTE', 20)
-        self.MAX_MARKDOWN_BYTES = _get_int_env('MAX_MARKDOWN_BYTES', 1048576)
-        self.ALLOW_EMPTY_MARKDOWN = _get_bool_env('ALLOW_EMPTY_MARKDOWN', False)
         self.WEB3_INFURA_PROJECT_ID = os.getenv('WEB3_INFURA_PROJECT_ID')
         self.INFURA_API_KEY = os.getenv('WEB3_INFURA_PROJECT_ID')
         self.ADMIN_API_KEY = os.environ.get('ADMIN_API_KEY', 'changeme')

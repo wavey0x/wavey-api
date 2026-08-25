@@ -62,10 +62,6 @@ def ll_info():
 def get_treasury_balance_sheet():
     return crvlol.get_treasury_balance_sheet()
 
-@api.route('/crvlol/charts/<chart_name>/<peg>')
-def get_chart(chart_name, peg):
-    return crvlol.get_chart(chart_name, peg)
-
 @api.route('/crvlol/gauge_votes', methods=['GET'])
 def get_gauge_votes():
     return gauge_voting.get_gauge_votes(request)

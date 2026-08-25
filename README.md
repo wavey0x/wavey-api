@@ -1,4 +1,16 @@
-### Prisma Shadow Logs API
+# wavey-api
+
+Shared Flask API for Wavey services, including Curve gauge tools, CRV.LOL,
+liquid-locker harvests, YBS, Resupply, Tidal, status, and timestamp routes.
+
+CRV.LOL snapshot-backed routes read the file named by the required
+`CRVLOL_SNAPSHOT_PATH` environment variable. Production uses
+`/var/lib/crv-lol/snapshot.json`; the `crv-lol` refresh service is the only
+writer.
+
+The gist service is deployed and maintained separately from this repository.
+
+## Prisma Shadow Logs API
 
 This document outlines the usage of the Prisma Shadow Logs API, which allows users to query a dataset of pre-fetched shadow logs from Prisma's vault contract. This API exposes data otherwise difficult to obtain from a regular Ethereum node. The API supports flexible queries with options for range filters, size comparisons, and matching multiple values.
 

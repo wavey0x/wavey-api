@@ -1,11 +1,10 @@
-from flask import Flask, request, jsonify, send_from_directory
-import pandas as pd
+from flask import request, jsonify
 from models import CrvLlHarvest
-import json, os, glob
+import os
 from dotenv import load_dotenv
-from web3 import Web3
 from .web3_services import setup_web3, get_contract
 from .abis.validator_abi import DAO_ABI, VALIDATOR_ABI
+from .crvlol_snapshot import load_snapshot
 
 load_dotenv()
 
@@ -19,17 +18,6 @@ CURVE_DAO_ADDRESS = os.getenv(
 )
 
 
-def _get_ll_info_path():
-    filepath = os.getenv('HOME_DIRECTORY')
-    return f'{filepath}/curve-ll-charts/data/ll_info.json'
-
-
-def _load_ll_info():
-    filepath = _get_ll_info_path()
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(filepath)
-    with open(filepath) as file:
-        return json.load(file)
 def get_harvests():
     # Get query parameters for pagination
     page = request.args.get('page', 1, type=int)
@@ -69,77 +57,31 @@ def get_harvests():
 
 
 def ll_info():
-    filepath = _get_ll_info_path()
-    if not glob.glob(filepath):
-        return "File not found", 404
     try:
-        data = _load_ll_info()
+        data = load_snapshot()
         data.pop('curve_gauge_data', None)
         data.pop('curve_gauges_by_name', None)
         return jsonify(data)
+    except FileNotFoundError:
+        return jsonify({"error": "CRV snapshot not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 def get_treasury_balance_sheet():
     try:
-        data = _load_ll_info()
+        data = load_snapshot()
     except FileNotFoundError:
-        return jsonify({"error": "ll_info file not found"}), 404
+        return jsonify({"error": "CRV snapshot not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
     treasury_balance_sheet = data.get('treasury_balance_sheet')
     if not treasury_balance_sheet:
-        return jsonify({"error": "treasury_balance_sheet not found in ll_info.json"}), 404
+        return jsonify({"error": "treasury_balance_sheet not found in CRV snapshot"}), 404
 
     return jsonify(treasury_balance_sheet)
-# Serve the most recent chart JSON
-def get_chart(chart_name, peg):
-    peg_str = 'True' if peg.lower() == 'true' else 'False'
-    filepath = os.getenv('HOME_DIRECTORY')
-    pattern = f'{filepath}/curve-ll-charts/charts/{chart_name}_{peg_str}*.json'
-    files = glob.glob(pattern)
-    if not files:
-        return "File not found", 404
-    latest_file = max(files, key=os.path.getctime)
-    return send_from_directory(os.path.dirname(latest_file), os.path.basename(latest_file))
 
-def get_curve_gauge_data():
-    """
-    Get curve gauge data from local file to reduce latency.
-    
-    Returns:
-        JSON response containing curve gauge data
-    """
-    try:
-        filepath = os.getenv('HOME_DIRECTORY')
-        filepath = f'{filepath}/curve-ll-charts/data/ll_info.json'
-        
-        if not os.path.exists(filepath):
-            return jsonify({"error": "ll_info file not found"}), 404
-            
-        with open(filepath) as file:
-            data = json.load(file)
-            
-        # Extract the curve_gauge_data key from ll_info.json
-        if "curve_gauge_data" in data:
-            gauge_data = data["curve_gauge_data"]
-            return jsonify({
-                "status": "success",
-                "data": gauge_data
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "curve_gauge_data key not found in ll_info.json"
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
 
 def _format_gauge_validations(web3, validations):
     return [
