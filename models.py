@@ -9,7 +9,7 @@ class Stake(db.Model):
     amount = db.Column(db.Numeric, nullable=False)
     newweight = db.Column('new_weight', db.Numeric, nullable=False)
     timestamp = db.Column(db.Integer, nullable=False)
-    staked = db.Column(db.Boolean, nullable=False)
+    staked = db.Column('is_stake', db.Boolean, nullable=False)
 
     def to_dict(self):
         return {
