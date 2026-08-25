@@ -9,6 +9,8 @@ CRV.LOL snapshot-backed routes read the file named by the required
 writer.
 
 The gist service is deployed and maintained separately from this repository.
+The production snapshot environment is recorded in
+`deploy/systemd/wavey-api.service.d/crv-lol-snapshot.conf`.
 
 ## Prisma Shadow Logs API
 
