@@ -7,7 +7,7 @@ class Stake(db.Model):
     ybs = db.Column(db.String(), nullable=False)
     account = db.Column(db.String(), nullable=False)
     amount = db.Column(db.Numeric, nullable=False)
-    newweight = db.Column(db.Numeric, nullable=False)
+    newweight = db.Column('new_weight', db.Numeric, nullable=False)
     timestamp = db.Column(db.Integer, nullable=False)
     staked = db.Column(db.Boolean, nullable=False)
 
