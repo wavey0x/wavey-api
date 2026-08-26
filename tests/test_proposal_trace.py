@@ -118,7 +118,7 @@ def _database(tmp_path):
     connection.execute(
         "CREATE TABLE audit_items ("
         "source_id TEXT NOT NULL, external_id TEXT NOT NULL, status TEXT NOT NULL, "
-        "created_at INTEGER NOT NULL, item_json TEXT NOT NULL, analysis_json TEXT, "
+        "item_json TEXT NOT NULL, analysis_json TEXT, "
         "gist_url TEXT, telegram_message_id INTEGER, session_workspace TEXT, "
         "review_reason TEXT, report_markdown TEXT, "
         "PRIMARY KEY (source_id, external_id))"
@@ -133,12 +133,11 @@ def _insert(path, source_id, external_id, created_at, nonce=None, report="# Stor
     connection = sqlite3.connect(path)
     connection.execute(
         "INSERT INTO audit_items "
-        "(source_id, external_id, status, created_at, item_json, analysis_json, gist_url, "
-        "report_markdown) VALUES (?, ?, 'sent', ?, ?, ?, ?, ?)",
+        "(source_id, external_id, status, item_json, analysis_json, gist_url, "
+        "report_markdown) VALUES (?, ?, 'sent', ?, ?, ?, ?)",
         (
             source_id,
             external_id,
-            created_at,
             json.dumps(item, sort_keys=True, separators=(",", ":")),
             json.dumps(_analysis(), sort_keys=True, separators=(",", ":")),
             GIST_URL,

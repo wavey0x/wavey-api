@@ -24,12 +24,16 @@ _GIST = re.compile(r"https://gist\.wavey\.info/[A-Za-z0-9]{16,64}")
 _REQUIRED_COLUMNS = {
     "source_id": "TEXT",
     "external_id": "TEXT",
-    "created_at": "INTEGER",
     "item_json": "TEXT",
     "analysis_json": "TEXT",
     "report_markdown": "TEXT",
     "gist_url": "TEXT",
 }
+_CREATED_AT_SQL = "CAST(json_extract(item_json, '$.created_at') AS INTEGER)"
+_SELECT_FIELDS = (
+    "source_id, external_id, " + _CREATED_AT_SQL + " AS created_at, "
+    "item_json, analysis_json, report_markdown, gist_url"
+)
 _ITEM_FIELDS = {
     "source_id",
     "external_id",
@@ -510,13 +514,19 @@ class ProposalTraceService:
         parameters = [source_id]
         predicate = "source_id=? AND analysis_json IS NOT NULL"
         if cursor is not None:
-            predicate += " AND (created_at < ? OR (created_at = ? AND external_id > ?))"
+            predicate += " AND ({} < ? OR ({} = ? AND external_id > ?))".format(
+                _CREATED_AT_SQL,
+                _CREATED_AT_SQL,
+            )
             parameters.extend([cursor[0], cursor[0], cursor[1]])
         parameters.append(limit + 1)
         query = (
-            "SELECT source_id, external_id, created_at, item_json, analysis_json, "
-            "report_markdown, gist_url FROM audit_items WHERE {} "
-            "ORDER BY created_at DESC, external_id ASC LIMIT ?".format(predicate)
+            "SELECT {} FROM audit_items WHERE {} "
+            "ORDER BY {} DESC, external_id ASC LIMIT ?".format(
+                _SELECT_FIELDS,
+                predicate,
+                _CREATED_AT_SQL,
+            )
         )
         with _connection(self.db_path, self.busy_timeout_ms) as connection:
             rows = connection.execute(query, parameters).fetchall()
@@ -538,10 +548,9 @@ class ProposalTraceService:
     def audit(self, source_id, external_id):
         external_id = canonical_external_id(source_id, external_id)
         query = (
-            "SELECT source_id, external_id, created_at, item_json, analysis_json, "
-            "report_markdown, gist_url FROM audit_items "
+            "SELECT {} FROM audit_items "
             "WHERE source_id=? AND external_id=? AND analysis_json IS NOT NULL"
-        )
+        ).format(_SELECT_FIELDS)
         with _connection(self.db_path, self.busy_timeout_ms) as connection:
             row = connection.execute(query, (source_id, external_id)).fetchone()
         if row is None:
@@ -553,12 +562,11 @@ class ProposalTraceService:
         source_id = parse_source_path("safe/{}/{}".format(chain_id, safe_address))
         nonce = canonical_nonce(nonce_value)
         query = (
-            "SELECT source_id, external_id, created_at, item_json, analysis_json, "
-            "report_markdown, gist_url FROM audit_items "
+            "SELECT {} FROM audit_items "
             "WHERE source_id=? AND analysis_json IS NOT NULL "
             "AND CAST(json_extract(item_json, '$.source_record.transaction.nonce') AS TEXT)=? "
-            "ORDER BY created_at DESC, external_id ASC LIMIT 1"
-        )
+            "ORDER BY {} DESC, external_id ASC LIMIT 1"
+        ).format(_SELECT_FIELDS, _CREATED_AT_SQL)
         with _connection(self.db_path, self.busy_timeout_ms) as connection:
             row = connection.execute(query, (source_id, str(nonce))).fetchone()
         if row is None:
