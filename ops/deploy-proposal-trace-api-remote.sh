@@ -129,6 +129,7 @@ systemctl enable "$UNIT"
 systemctl restart "$UNIT"
 systemctl is-active --quiet "$UNIT"
 if ! curl --fail --silent --show-error --max-time 10 \
+  --retry 10 --retry-connrefused --retry-delay 1 \
   'http://127.0.0.1:3101/api/proposal-trace/curve/ownership/audits?limit=1' \
   | "$release/.venv/bin/python" -c \
     'import json,sys; value=json.load(sys.stdin); assert value["contract_version"] == 1 and len(value["audits"]) <= 1'; then

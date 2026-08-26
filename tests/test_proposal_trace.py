@@ -306,3 +306,4 @@ def test_claw_unit_is_loopback_only_and_cannot_read_private_proposal_trace_state
     assert 'chmod 0710 "$STATE_ROOT"' in remote
     assert 'chmod 0640 "$DATABASE"' in remote
     assert "grep -Fx proposal-trace" in remote
+    assert "--retry 10 --retry-connrefused" in remote
