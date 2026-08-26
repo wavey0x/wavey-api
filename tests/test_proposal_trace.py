@@ -296,6 +296,7 @@ def test_claw_unit_is_loopback_only_and_cannot_read_private_proposal_trace_state
     remote = Path("ops/deploy-proposal-trace-api-remote.sh").read_text()
 
     assert "--bind 127.0.0.1:3101" in unit
+    assert "--no-control-socket" in unit
     assert "SupplementaryGroups=proposal-trace-reader" in unit
     assert "IPAddressDeny=any" in unit
     assert "IPAddressAllow=localhost" in unit
