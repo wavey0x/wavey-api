@@ -8,8 +8,10 @@ import services.crvlol as crvlol
 import services.gauge_voting as gauge_voting
 import services.resupply as resupply
 from services.gauge_info import GaugeInfoService
+from proposal_trace_routes import proposal_trace_api
 
 api = Blueprint('api', __name__)
+api.register_blueprint(proposal_trace_api)
 
 # Initialize the GaugeInfoService
 gauge_info_service = GaugeInfoService()

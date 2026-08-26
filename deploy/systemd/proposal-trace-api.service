@@ -1,0 +1,37 @@
+[Unit]
+Description=Read-only Proposal Trace API
+After=network-online.target proposal-trace.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wavey-api
+Group=wavey-api
+SupplementaryGroups=proposal-trace-reader
+WorkingDirectory=/opt/wavey-api/current
+EnvironmentFile=/etc/wavey-api/proposal-trace.env
+ExecStart=/opt/wavey-api/current/.venv/bin/gunicorn --bind 127.0.0.1:3101 --workers 2 --threads 4 --timeout 30 --access-logfile /dev/null --error-logfile - proposal_trace_app:app
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+InaccessiblePaths=/etc/proposal-trace /var/lib/proposal-trace/.codex /var/lib/proposal-trace-workspaces
+
+[Install]
+WantedBy=multi-user.target
