@@ -101,11 +101,14 @@ python3 -m venv "$release/.venv"
 chown -R root:root "$release"
 chmod -R a-w "$release"
 
-if ! runuser -u "$SERVICE_USER" -- env \
-  PROPOSAL_TRACE_DB_PATH="$DATABASE" PROPOSAL_TRACE_BUSY_TIMEOUT_MS=5000 \
-  "$release/.venv/bin/python" -c \
-  'from services.proposal_trace import ProposalTraceService; import sys; result=ProposalTraceService(sys.argv[1]).list_audits("curve:ownership", "1"); assert result["contract_version"] == 1' \
-  "$DATABASE"; then
+if ! (
+  cd "$release"
+  runuser -u "$SERVICE_USER" -- env \
+    PROPOSAL_TRACE_DB_PATH="$DATABASE" PROPOSAL_TRACE_BUSY_TIMEOUT_MS=5000 \
+    "$release/.venv/bin/python" -c \
+    'from services.proposal_trace import ProposalTraceService; import sys; result=ProposalTraceService(sys.argv[1]).list_audits("curve:ownership", "1"); assert result["contract_version"] == 1' \
+    "$DATABASE"
+); then
   echo "Proposal Trace API read-only smoke check failed" >&2
   exit 1
 fi
