@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+import re
+from sqlalchemy.engine import URL
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -61,7 +64,17 @@ def _get_bool_env_alias(name, legacy_name, default):
 
 class Config:
     def __init__(self):
-        self.SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI')
+        database_path = Path(_get_required_env('YEARN_DB_PATH')).expanduser()
+        if not database_path.is_absolute():
+            raise RuntimeError('YEARN_DB_PATH must be an absolute local path')
+        self.YEARN_IMPORT_SHA256 = _get_required_env('YEARN_IMPORT_SHA256')
+        if not re.fullmatch(r'[0-9a-f]{64}', self.YEARN_IMPORT_SHA256):
+            raise RuntimeError('YEARN_IMPORT_SHA256 must identify the validated import')
+        self.SQLALCHEMY_DATABASE_URI = URL.create(
+            'sqlite+pysqlite', database=database_path.as_uri(),
+            query={'mode': 'ro', 'uri': 'true'},
+        )
+        self.SQLALCHEMY_ENGINE_OPTIONS = {'connect_args': {'timeout': 5}}
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
         self.PORT = _get_int_env('PORT', 3001)
         self.WEB3_INFURA_PROJECT_ID = os.getenv('WEB3_INFURA_PROJECT_ID')

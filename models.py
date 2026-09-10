@@ -1,4 +1,5 @@
 from database import db
+from sqlite_types import ExactNumeric
 
 class Stake(db.Model):
     __tablename__ = 'stakes'
@@ -6,8 +7,8 @@ class Stake(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ybs = db.Column(db.String(), nullable=False)
     account = db.Column(db.String(), nullable=False)
-    amount = db.Column(db.Numeric, nullable=False)
-    newweight = db.Column('new_weight', db.Numeric, nullable=False)
+    amount = db.Column(ExactNumeric, nullable=False)
+    newweight = db.Column('new_weight', ExactNumeric, nullable=False)
     timestamp = db.Column(db.Integer, nullable=False)
     staked = db.Column('is_stake', db.Boolean, nullable=False)
 
@@ -29,13 +30,13 @@ class UserWeekInfo(db.Model):
     account = db.Column(db.String, primary_key=True)
     week_id = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.String)
-    user_weight = db.Column(db.Numeric(30, 18))
-    user_balance = db.Column(db.Numeric(30, 18))
-    user_boost = db.Column(db.Numeric(30, 18))
+    user_weight = db.Column(ExactNumeric(30, 18))
+    user_balance = db.Column(ExactNumeric(30, 18))
+    user_boost = db.Column(ExactNumeric(30, 18))
     user_stake_map = db.Column(db.JSON)
-    user_rewards_earned = db.Column(db.Numeric(30, 18))
+    user_rewards_earned = db.Column(ExactNumeric(30, 18))
     ybs = db.Column(db.String)
-    global_weight = db.Column(db.Numeric(30, 18))
+    global_weight = db.Column(ExactNumeric(30, 18))
     global_stake_map = db.Column(db.JSON)
     start_ts = db.Column(db.Integer)
     start_block = db.Column(db.Integer)
@@ -71,11 +72,11 @@ class UserInfo(db.Model):
     account = db.Column(db.String, primary_key=True)
     week_id = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.String)
-    weight = db.Column(db.Numeric(30, 18))
-    balance = db.Column(db.Numeric(30, 18))
-    boost = db.Column(db.Numeric(30, 18))
+    weight = db.Column(ExactNumeric(30, 18))
+    balance = db.Column(ExactNumeric(30, 18))
+    boost = db.Column(ExactNumeric(30, 18))
     stake_map = db.Column(db.JSON)
-    rewards_earned = db.Column(db.Numeric(30, 18))
+    rewards_earned = db.Column(ExactNumeric(30, 18))
     ybs = db.Column(db.String)
     def to_dict(self):
         return {
@@ -95,9 +96,9 @@ class GlobalWeekInfo(db.Model):
     __tablename__ = 'week_info'
     week_id = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.String)
-    weight = db.Column(db.Numeric(30, 18))
-    total_supply = db.Column(db.Numeric(30, 18))
-    boost = db.Column(db.Numeric(30, 18))
+    weight = db.Column(ExactNumeric(30, 18))
+    total_supply = db.Column(ExactNumeric(30, 18))
+    boost = db.Column(ExactNumeric(30, 18))
     stake_map = db.Column(db.JSON)
     ybs = db.Column(db.String)
     start_ts = db.Column(db.Integer)
@@ -128,7 +129,7 @@ class GlobalWeekInfo(db.Model):
 class CrvLlHarvest(db.Model):
     __tablename__ = 'crv_ll_harvests'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    profit = db.Column(db.Numeric(30, 18))
+    profit = db.Column(ExactNumeric(30, 18))
     timestamp = db.Column(db.Integer)
     name = db.Column(db.String)
     underlying = db.Column(db.String)
@@ -144,7 +145,7 @@ class GaugeVoteInfo(db.Model):
     gauge = db.Column(db.String, nullable=False)
     gauge_name = db.Column(db.String, nullable=True)
     account = db.Column(db.String, nullable=False)
-    amount = db.Column(db.Numeric(30, 18), nullable=False)
+    amount = db.Column(ExactNumeric(30, 18), nullable=False)
     weight = db.Column(db.Integer, nullable=False)
     txn_hash = db.Column(db.String, nullable=True)
     timestamp = db.Column(db.Integer, nullable=False)

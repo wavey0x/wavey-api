@@ -1,11 +1,11 @@
-from database import db
+from database import db, init_app
 from config import Config
 from flask import Flask
 from sqlalchemy import inspect
 
 app = Flask(__name__)
 app.config.from_object(Config())
-db.init_app(app)
+init_app(app)
 
 with app.app_context():
     inspector = inspect(db.engine)

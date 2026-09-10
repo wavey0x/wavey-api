@@ -7,5 +7,4 @@ python-dotenv
 pytz
 python-dateutil
 flask_cors
-psycopg2-binary
 gunicorn

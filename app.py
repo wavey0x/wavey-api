@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import routes
 import logging
 from logging.handlers import RotatingFileHandler
-from database import db
+from database import db, init_app
 from config import Config
 from flask_cors import CORS
 from services.gauge_info import GaugeInfoService
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 app.config.from_object(Config())
-db.init_app(app)
+init_app(app)
 
 # Log startup information
 logger.info("Starting application")
