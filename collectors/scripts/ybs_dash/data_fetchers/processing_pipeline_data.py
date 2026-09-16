@@ -28,20 +28,12 @@ def build_data(token, staker_data):
     balances = {}
     for token_address in burn_tokens:
         token = erc20_metadata_contract(token_address)
-        try:
-            balance = token.balanceOf(YCRV_FEE_BURNER)
-        except Exception as exc:
-            log.warning("Skipping fee burner token %s: balanceOf failed: %s", token_address, exc)
-            continue
+        balance = token.balanceOf(YCRV_FEE_BURNER)
 
         if balance <= 1:
             continue
 
-        try:
-            decimals = token.decimals()
-        except Exception as exc:
-            log.warning("Skipping fee burner token %s: decimals failed: %s", token_address, exc)
-            continue
+        decimals = token.decimals()
 
         try:
             symbol = token.symbol()
