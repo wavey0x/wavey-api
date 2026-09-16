@@ -1,0 +1,100 @@
+[
+  {
+    "type": "function",
+    "name": "getRoundData",
+    "inputs": [
+      {
+        "name": "_roundId",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "roundId",
+        "type": "uint80",
+        "internalType": "uint80"
+      },
+      {
+        "name": "answer",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "startedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "answeredInRound",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "latestAnswer",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "latestRound",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "latestRoundData",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "roundId",
+        "type": "uint80",
+        "internalType": "uint80"
+      },
+      {
+        "name": "answer",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "startedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "answeredInRound",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "stateMutability": "view"
+  }
+]

@@ -1,0 +1,70 @@
+[
+  {
+    "type": "function",
+    "name": "add_gauge",
+    "inputs": [
+      {
+        "name": "_gauge_addr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_type",
+        "type": "int128",
+        "internalType": "int128"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "admin",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "get_gauge_weight",
+    "inputs": [
+      {
+        "name": "_pool",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "vote_for_gauge_weights",
+    "inputs": [
+      {
+        "name": "_gauge_addr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_user_weight",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  }
+]

@@ -1,0 +1,974 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_core",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_registry",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_govToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_initialDeployer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_defaultConfigData",
+        "type": "tuple",
+        "internalType": "struct ResupplyPairDeployer.ConfigData",
+        "components": [
+          {
+            "name": "oracle",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "rateCalculator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "maxLTV",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "initialBorrowLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "liquidationFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "mintFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "protocolRedemptionFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "_previouslyDeployedPairs",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "_previouslyDeployedPairsInfo",
+        "type": "tuple[]",
+        "internalType": "struct ResupplyPairDeployer.DeployInfo[]",
+        "components": [
+          {
+            "name": "protocolId",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "deployTime",
+            "type": "uint40",
+            "internalType": "uint40"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addSupportedProtocol",
+    "inputs": [
+      {
+        "name": "_protocolName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_amountToBurn",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_minShareBurnAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_borrowTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      },
+      {
+        "name": "_collateralTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "approvedDeployers",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "collateralId",
+    "inputs": [
+      {
+        "name": "protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "borrowToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "collateralToken",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "contractAddress1",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "contractAddress2",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "core",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ICore"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "defaultConfigData",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct ResupplyPairDeployer.ConfigData",
+        "components": [
+          {
+            "name": "oracle",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "rateCalculator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "maxLTV",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "initialBorrowLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "liquidationFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "mintFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "protocolRedemptionFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deploy",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_configData",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "_underlyingStaking",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStakingId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "_pairAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "deployInfo",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "protocolId",
+        "type": "uint40",
+        "internalType": "uint40"
+      },
+      {
+        "name": "deployTime",
+        "type": "uint40",
+        "internalType": "uint40"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deployWithDefaultConfig",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_collateral",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStaking",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStakingId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "_pairAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getBorrowAndCollateralTokens",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_collateral",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "_borrowToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_collateralToken",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getNextName",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_collateral",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "_name",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_borrowToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_collateralToken",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "govToken",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "platformNameById",
+    "inputs": [
+      {
+        "name": "protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "predictPairAddress",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_collateral",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStaking",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStakingId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "predictPairAddress",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_configData",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "_underlyingStaking",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_underlyingStakingId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "registry",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setApprovedDeployer",
+    "inputs": [
+      {
+        "name": "_deployer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_approved",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setCreationCode",
+    "inputs": [
+      {
+        "name": "_creationCode",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setDefaultConfigData",
+    "inputs": [
+      {
+        "name": "_oracle",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_rateCalculator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_maxLTV",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_initialBorrowLimit",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_liquidationFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_mintFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_protocolRedemptionFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "supportedProtocols",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "protocolName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "amountToBurn",
+        "type": "uint80",
+        "internalType": "uint80"
+      },
+      {
+        "name": "minShareBurnAmount",
+        "type": "uint80",
+        "internalType": "uint80"
+      },
+      {
+        "name": "borrowTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      },
+      {
+        "name": "collateralTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "supportedProtocolsLength",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "updateSupportedProtocol",
+    "inputs": [
+      {
+        "name": "_protocolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_protocolName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_amountToBurn",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_minShareBurnAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_borrowTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      },
+      {
+        "name": "_collateralTokenSig",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "version",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "_major",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_minor",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_patch",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "event",
+    "name": "ApprovedDeployerSet",
+    "inputs": [
+      {
+        "name": "_deployer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "_approved",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DefaultConfigDataSet",
+    "inputs": [
+      {
+        "name": "oracle",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "rateCalculator",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "maxLTV",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "initialBorrowLimit",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "liquidationFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "mintFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "protocolRedemptionFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LogDeploy",
+    "inputs": [
+      {
+        "name": "address_",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "collateral",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "protocolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "configData",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      },
+      {
+        "name": "immutables",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      },
+      {
+        "name": "customConfigData",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProtocolUpdated",
+    "inputs": [
+      {
+        "name": "protocolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "protocolName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "borrowTokenSig",
+        "type": "bytes4",
+        "indexed": false,
+        "internalType": "bytes4"
+      },
+      {
+        "name": "collateralTokenSig",
+        "type": "bytes4",
+        "indexed": false,
+        "internalType": "bytes4"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StateMigrated",
+    "inputs": [
+      {
+        "name": "_previousPairDeployer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "ApprovedDeployersOnly",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Create2Failed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAmountToBurn",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidBorrowOrCollateralTokenLookup",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidConfigData",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidMinShareBurnAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NonUniqueName",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotEnoughSharesBurned",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ProtocolAlreadyExists",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ProtocolNameEmpty",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ProtocolNameTooLong",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ProtocolNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SafeERC20FailedOperation",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  }
+]

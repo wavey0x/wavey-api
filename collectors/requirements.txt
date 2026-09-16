@@ -1,0 +1,4 @@
+eth-brownie
+setuptools==80.9.0
+python-dotenv
+joblib

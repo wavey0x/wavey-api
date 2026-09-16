@@ -10,3 +10,9 @@ access.log
 error.log
 gunicorn_config.py
 app.log
+.local/
+collectors/.env
+collectors/data/
+collectors/cache/
+collectors/build/
+collectors/reports/

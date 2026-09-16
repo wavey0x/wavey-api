@@ -1,0 +1,111 @@
+[
+  {
+    "type": "function",
+    "name": "cancelRamp",
+    "inputs": [
+      {
+        "name": "_pair",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pairLimits",
+    "inputs": [
+      {
+        "name": "_pair",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IBorrowLimitController.PairBorrowLimit",
+        "components": [
+          {
+            "name": "targetBorrowLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "prevBorrowLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "startTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "endTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "previewNewBorrowLimit",
+    "inputs": [
+      {
+        "name": "_pair",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setPairBorrowLimitRamp",
+    "inputs": [
+      {
+        "name": "_pair",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_newBorrowLimit",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_endTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updatePairBorrowLimit",
+    "inputs": [
+      {
+        "name": "_pair",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  }
+]

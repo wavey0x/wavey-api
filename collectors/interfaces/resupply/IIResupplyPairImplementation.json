@@ -1,0 +1,38 @@
+[
+  {
+    "type": "function",
+    "name": "getCreationCode",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "version",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "_major",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_minor",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_patch",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  }
+]

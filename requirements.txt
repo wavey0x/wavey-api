@@ -1,5 +1,4 @@
 flask
-duckdb
 pandas
 web3
 flask_sqlalchemy

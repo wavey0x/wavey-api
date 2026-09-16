@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 import services.verify_gauge as verify_gauge
 import services.stakes as stakes
 import services.time as time_module
-import services.status as status
+import services.feeds as feeds
 import services.ybs as ybs
 import services.crvlol as crvlol
 import services.gauge_voting as gauge_voting
@@ -38,9 +38,13 @@ def timestamp_route():
         current_app.logger.error(f"{e}")
         return jsonify({"error": 'Something went wrong.'}), 400
 
-@api.route('/status', methods=['GET'])
-def get_status():
-    return status.get_status()
+@api.route('/resupply/data', methods=['GET'])
+def get_resupply_data():
+    return feeds.get_feed('resupply')
+
+@api.route('/ybs/data', methods=['GET'])
+def get_ybs_data():
+    return feeds.get_feed('ybs')
 
 @api.route('/ybs/user_info', methods=['GET'])
 def get_user_info():

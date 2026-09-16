@@ -1,0 +1,65 @@
+[
+  {
+    "type": "function",
+    "name": "getConstants",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "_calldata",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "getNewRate",
+    "inputs": [
+      {
+        "name": "_data",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "_initData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "_newRatePerSec",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "name",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "requireValidInitData",
+    "inputs": [
+      {
+        "name": "_initData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  }
+]

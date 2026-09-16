@@ -37,6 +37,9 @@ app = Flask(__name__)
 CORS(app)
 app.config.from_object(Config())
 init_app(app)
+with app.app_context():
+    from services.feeds import validate_schema
+    validate_schema()
 
 # Log startup information
 logger.info("Starting application")
